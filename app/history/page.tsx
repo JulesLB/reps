@@ -157,15 +157,17 @@ function SessionCard({
 }
 
 function SettingsSheet({ data, onClose }: { data: AppData; onClose: () => void }) {
-  const exportJson = () => {
+  const downloadBackup = (prefix: string) => {
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `reps-export-${new Date().toISOString().slice(0, 10)}.json`;
+    a.download = `${prefix}-${new Date().toISOString().slice(0, 10)}.json`;
     a.click();
     URL.revokeObjectURL(url);
   };
+
+  const exportJson = () => downloadBackup("reps-export");
 
   // Restores an exported file onto this device. Replaces everything, so it
   // doubles as "move my history to a new phone".
@@ -232,10 +234,15 @@ function SettingsSheet({ data, onClose }: { data: AppData; onClose: () => void }
           <button
             type="button"
             onClick={() => {
-              if (confirm("Delete ALL data, including your sessions and exercises? This cannot be undone.")) {
+              const n = data.sessions.length;
+              if (!confirm(`Delete ALL data on this device? ${n} logged ${n === 1 ? "session" : "sessions"}, your session types, and your cycle.\n\nA backup file downloads first so this is always recoverable.`)) return;
+              // Always take a copy before wiping: without sync signed in, this
+              // button is otherwise the one unrecoverable action in the app.
+              downloadBackup("reps-before-reset");
+              setTimeout(() => {
                 localStorage.removeItem("gym-tracker-v1");
                 location.reload();
-              }
+              }, 800);
             }}
             className="h-12 w-full rounded-xl border border-warn/30 px-4 text-left text-sm font-semibold text-warn transition-colors duration-150 hover:bg-warn/10"
           >
