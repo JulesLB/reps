@@ -1,0 +1,99 @@
+@import "tailwindcss";
+
+:root {
+  --bg: #0a0b0e;
+  --surface: #14161c;
+  --surface-2: #1b1e26;
+  --line: #262a34;
+  --line-soft: #1e222b;
+  --text: #f4f6f8;
+  --muted: #8b93a3;
+  --faint: #5a6170;
+  --volt: #c9f73a;
+  --volt-dim: #a8d42c;
+  --volt-ink: #0a0b0e;
+  --amber: #ffb454;
+  --red: #ff5a64;
+  --blue: #5ac8ff;
+}
+
+@theme inline {
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-line: var(--line);
+  --color-line-soft: var(--line-soft);
+  --color-ink: var(--text);
+  --color-muted: var(--muted);
+  --color-faint: var(--faint);
+  --color-volt: var(--volt);
+  --color-volt-dim: var(--volt-dim);
+  --color-volt-ink: var(--volt-ink);
+  --color-amber: var(--amber);
+  --color-warn: var(--red);
+  --color-info: var(--blue);
+  --font-sans: var(--font-barlow), system-ui, sans-serif;
+  --font-display: var(--font-barlow-condensed), var(--font-barlow), sans-serif;
+}
+
+html {
+  background: var(--bg);
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-barlow), system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -webkit-tap-highlight-color: transparent;
+  overscroll-behavior-y: none;
+}
+
+.num {
+  font-variant-numeric: tabular-nums;
+}
+
+.display {
+  font-family: var(--font-display);
+  letter-spacing: 0.01em;
+}
+
+input[type="number"]::-webkit-outer-spin-button,
+input[type="number"]::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+input[type="number"] {
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+
+button {
+  cursor: pointer;
+}
+
+@keyframes pop {
+  0% { transform: scale(1); }
+  45% { transform: scale(1.14); }
+  100% { transform: scale(1); }
+}
+.pop {
+  animation: pop 220ms ease-out;
+}
+
+@keyframes rise {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.rise {
+  animation: rise 260ms ease-out both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pop, .rise {
+    animation: none;
+  }
+  * {
+    transition-duration: 0.01ms !important;
+  }
+}
