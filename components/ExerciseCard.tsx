@@ -44,6 +44,9 @@ export default function ExerciseCard({ data, log, dayId, onMutate, onSetDone, on
   const workCount = log.sets.filter((s) => !s.warmup).length;
   const hasWarmup = log.sets.some((s) => s.warmup);
   const rest = restFor(data, log.exerciseId);
+  // Last session's working sets, positionally aligned, so a set can flag when it
+  // beats what was lifted there before.
+  const lastSets = history[0]?.sets;
 
   // All edits apply to the live stored log, never a stale copy, so quick
   // successive taps on different sets can't overwrite each other.
@@ -118,9 +121,6 @@ export default function ExerciseCard({ data, log, dayId, onMutate, onSetDone, on
             <span className="rounded-full border border-line px-2 py-0.5 text-[11px] font-medium uppercase tracking-wide text-muted">
               {MUSCLE_LABEL[exercise.muscle]}
             </span>
-            <span className="num rounded-full border border-line px-2 py-0.5 text-[11px] font-medium text-muted">
-              {target.sets}×{target.reps}
-            </span>
             <button
               type="button"
               aria-label={`Rest ${formatSeconds(rest)}, tap to change`}
@@ -192,6 +192,7 @@ export default function ExerciseCard({ data, log, dayId, onMutate, onSetDone, on
               key={i}
               index={idx}
               set={set}
+              prev={set.warmup ? undefined : lastSets?.[idx - 1]}
               increment={data.settings.increment}
               onChange={(s) => setSet(i, s)}
             />

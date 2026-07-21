@@ -115,6 +115,22 @@ export function ArrowUpIcon(props: IconProps) {
   );
 }
 
+export function TriangleUpIcon(props: IconProps) {
+  return (
+    <svg viewBox="0 0 24 24" fill="currentColor" className={props.className ?? "w-6 h-6"} aria-hidden>
+      <path d="M12 6.5 19 18H5z" />
+    </svg>
+  );
+}
+
+export function TriangleDownIcon(props: IconProps) {
+  return (
+    <svg viewBox="0 0 24 24" fill="currentColor" className={props.className ?? "w-6 h-6"} aria-hidden>
+      <path d="M12 17.5 5 6h14z" />
+    </svg>
+  );
+}
+
 export function TrophyIcon(props: IconProps) {
   return (
     <svg {...base(props)}>

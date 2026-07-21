@@ -2,20 +2,34 @@
 
 import type { SetLog } from "@/lib/types";
 import NumberField from "./NumberField";
-import { CheckIcon } from "./icons";
+import { CheckIcon, TriangleDownIcon, TriangleUpIcon } from "./icons";
 
 interface SetRowProps {
   index: number;
   set: SetLog;
+  /** Same-position set from the last session, for the "beat last time" cue. */
+  prev?: SetLog;
   increment: number;
   onChange: (s: SetLog) => void;
 }
 
-export default function SetRow({ index, set, increment, onChange }: SetRowProps) {
+export default function SetRow({ index, set, prev, increment, onChange }: SetRowProps) {
   const toggle = () => {
     if (!set.done && typeof navigator !== "undefined" && navigator.vibrate) navigator.vibrate(18);
     onChange({ ...set, done: !set.done });
   };
+
+  // Live vs. last time's same-position set: heavier = up, lighter = down, equal =
+  // nothing. Shown as you dial the weight, before the set is even ticked, so it's
+  // a direction cue not a verdict. Weight only — matches how the lift is judged.
+  const trend =
+    !set.warmup && prev
+      ? set.weight > prev.weight
+        ? "up"
+        : set.weight < prev.weight
+          ? "down"
+          : null
+      : null;
 
   return (
     <div
@@ -32,13 +46,28 @@ export default function SetRow({ index, set, increment, onChange }: SetRowProps)
           {set.warmup ? "W" : index}
         </span>
       </div>
-      <NumberField
-        label={`Set ${index} weight`}
-        value={set.weight}
-        step={increment}
-        onChange={(weight) => onChange({ ...set, weight })}
-        dimmed={set.done}
-      />
+      <div className="relative flex min-w-0 flex-1">
+        <NumberField
+          label={`Set ${index} weight`}
+          value={set.weight}
+          step={increment}
+          onChange={(weight) => onChange({ ...set, weight })}
+          dimmed={set.done}
+        />
+        {trend && (
+          <span
+            className={`pointer-events-none absolute -bottom-1 right-0 ${
+              trend === "up" ? "text-volt" : "text-faint"
+            }`}
+          >
+            {trend === "up" ? (
+              <TriangleUpIcon className="h-2.5 w-2.5" />
+            ) : (
+              <TriangleDownIcon className="h-2.5 w-2.5" />
+            )}
+          </span>
+        )}
+      </div>
       <NumberField
         label={`Set ${index} reps`}
         value={set.reps}
