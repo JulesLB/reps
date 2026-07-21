@@ -103,5 +103,13 @@ export interface AppData {
   planUpdatedAt: number;
   sessions: Session[];
   active: Session | null;
+  /**
+   * Ids of sessions cleared with Discard (which leave no finished record). A
+   * bare `active: null` can't cross sync on its own — the merge treats a null
+   * as "no opinion" and keeps the other device's active — so a discard is
+   * recorded here and the merge drops any matching active. Finished sessions
+   * need no entry: the merge already spots them in `sessions`.
+   */
+  discardedActiveIds: string[];
   settings: Settings;
 }

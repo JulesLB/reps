@@ -16,6 +16,13 @@ function mergeSessions(a: Session[], b: Session[]): Session[] {
   return [...byId.values()].sort((x, y) => x.startedAt - y.startedAt);
 }
 
+/** Cap on discard tombstones kept per blob, newest last. Ids are tiny; this only bounds growth. */
+const MAX_DISCARDED = 50;
+
+function mergeDiscarded(a: string[], b: string[]): string[] {
+  return [...new Set([...(a ?? []), ...(b ?? [])])].slice(-MAX_DISCARDED);
+}
+
 function pickActive(a: Session | null, b: Session | null): Session | null {
   if (!a) return b;
   if (!b) return a;
@@ -36,6 +43,19 @@ function pickActive(a: Session | null, b: Session | null): Session | null {
  */
 export function mergeAppData(local: AppData, remote: AppData): AppData {
   const planWins = remote.planUpdatedAt > local.planUpdatedAt ? remote : local;
+  const sessions = mergeSessions(local.sessions, remote.sessions);
+  const discardedActiveIds = mergeDiscarded(local.discardedActiveIds, remote.discardedActiveIds);
+
+  // A bare `active: null` can't out-argue a live `active` from the other side
+  // (pickActive treats null as "no opinion"), so clearing the active session
+  // never propagated and a finished session kept re-opening after sync. Drop
+  // any active that's already finished (it's in `sessions`) or was discarded
+  // (it's tombstoned), so a Finish or Discard on one device finally sticks.
+  const cleared = new Set(discardedActiveIds);
+  for (const s of sessions) if (s.finishedAt != null) cleared.add(s.id);
+  const picked = pickActive(local.active, remote.active);
+  const active = picked && cleared.has(picked.id) ? null : picked;
+
   return {
     version: 4,
     exercises: planWins.exercises,
@@ -44,8 +64,9 @@ export function mergeAppData(local: AppData, remote: AppData): AppData {
     planStart: planWins.planStart,
     settings: planWins.settings,
     planUpdatedAt: planWins.planUpdatedAt,
-    sessions: mergeSessions(local.sessions, remote.sessions),
-    active: pickActive(local.active, remote.active),
+    sessions,
+    active,
+    discardedActiveIds,
   };
 }
 

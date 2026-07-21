@@ -35,6 +35,7 @@ export function emptyData(): AppData {
     planUpdatedAt: 0,
     sessions: [],
     active: null,
+    discardedActiveIds: [],
     settings: defaultSettings(),
   };
 }

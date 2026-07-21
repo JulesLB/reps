@@ -176,13 +176,13 @@ export function migrate(raw: unknown): AppData {
     days?: unknown;
     schedule?: (string | null)[];
   };
-  if (d.version === 4) return d as AppData;
+  if (d.version === 4) return normalize(d as AppData);
 
   if (d.version === 3) {
     const next = d as unknown as AppData;
     next.version = 4;
     next.planUpdatedAt = 0;
-    return next;
+    return normalize(next);
   }
 
   if (d.version === 2) {
@@ -192,7 +192,7 @@ export function migrate(raw: unknown): AppData {
     next.version = 4;
     next.planUpdatedAt = 0;
     delete (next as { schedule?: unknown }).schedule;
-    return next;
+    return normalize(next);
   }
 
   const exercises: Record<string, Exercise> = (d.exercises as Record<string, Exercise>) ?? {};
@@ -228,7 +228,7 @@ export function migrate(raw: unknown): AppData {
     DAY_REMAP[s.dayId] ? { ...s, dayId: DAY_REMAP[s.dayId] } : s
   );
 
-  return {
+  return normalize({
     version: 4,
     exercises,
     days: [...planDays, ...kept],
@@ -237,6 +237,13 @@ export function migrate(raw: unknown): AppData {
     planUpdatedAt: 0,
     sessions,
     active: d.active ?? null,
+    discardedActiveIds: [],
     settings,
-  };
+  });
+}
+
+/** Fill in fields added to the v4 schema so an older stored blob loads cleanly. */
+function normalize(d: AppData): AppData {
+  if (!Array.isArray(d.discardedActiveIds)) d.discardedActiveIds = [];
+  return d;
 }

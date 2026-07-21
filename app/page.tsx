@@ -510,6 +510,7 @@ function ActiveSession({ data, onFinished }: { data: AppData; onFinished: (s: Se
   const discard = () => {
     if (confirm("Discard this session? Nothing will be saved.")) {
       update((d) => {
+        if (d.active) d.discardedActiveIds = [...d.discardedActiveIds, d.active.id].slice(-50);
         d.active = null;
       });
     }
