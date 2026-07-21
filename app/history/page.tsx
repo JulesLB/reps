@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { useAppData } from "@/lib/store";
+import { update, useAppData } from "@/lib/store";
 import {
   finishedSessions,
   formatDuration,
@@ -12,7 +12,7 @@ import {
   sessionVolume,
 } from "@/lib/logic";
 import type { AppData, Session } from "@/lib/types";
-import { ChevronDownIcon, ChevronUpIcon, SettingsIcon, XIcon } from "@/components/icons";
+import { ChevronDownIcon, ChevronUpIcon, SettingsIcon, TrashIcon, XIcon } from "@/components/icons";
 import { DayIcon } from "@/components/DayIcons";
 import SyncPanel from "@/components/SyncPanel";
 import RecoverPanel from "@/components/RecoverPanel";
@@ -84,6 +84,13 @@ function SessionCard({
       ? `${cardioMin} min cardio`
       : `${done} sets · ${formatWeight(Math.round(volume))} kg`;
 
+  const del = () => {
+    if (!confirm(`Delete this ${session.dayName} session from ${dateLabel}? This can't be undone.`)) return;
+    update((d) => {
+      d.sessions = d.sessions.filter((s) => s.id !== session.id);
+    });
+  };
+
   return (
     <div className="overflow-hidden rounded-2xl border border-line-soft bg-surface">
       <button type="button" onClick={onToggle} className="flex w-full items-center gap-3 p-4 text-left">
@@ -151,6 +158,13 @@ function SessionCard({
               );
             })}
           </ul>
+          <button
+            type="button"
+            onClick={del}
+            className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl border border-warn/30 py-2.5 text-xs font-semibold text-warn transition-colors duration-150 hover:bg-warn/10"
+          >
+            <TrashIcon className="h-3.5 w-3.5" /> Delete session
+          </button>
         </div>
       )}
     </div>

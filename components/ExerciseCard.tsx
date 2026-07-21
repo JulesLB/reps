@@ -1,10 +1,19 @@
 "use client";
 
+import { useState } from "react";
 import type { AppData, ExerciseLog, SetLog } from "@/lib/types";
-import { lastLogFor, logTarget, overloadSuggestion, restFor, formatSeconds } from "@/lib/logic";
+import {
+  exerciseHistory,
+  formatWeight,
+  logTarget,
+  overloadSuggestion,
+  restFor,
+  formatSeconds,
+  type ExerciseHistoryEntry,
+} from "@/lib/logic";
 import { update } from "@/lib/store";
-import SetRow, { prevLabel } from "./SetRow";
-import { ArrowUpIcon, ClockIcon, MinusIcon, PlusIcon, SwapIcon, TrashIcon } from "./icons";
+import SetRow from "./SetRow";
+import { ArrowUpIcon, ChevronDownIcon, ChevronUpIcon, ClockIcon, MinusIcon, PlusIcon, SwapIcon, TrashIcon } from "./icons";
 
 const MUSCLE_LABEL: Record<string, string> = {
   chest: "Chest", back: "Back", shoulders: "Shoulders", biceps: "Biceps",
@@ -29,9 +38,8 @@ export default function ExerciseCard({ data, log, dayId, onMutate, onSetDone, on
   if (!exercise) return null;
 
   const target = logTarget(data, log);
-  const last = lastLogFor(data, log.exerciseId, dayId) ?? lastLogFor(data, log.exerciseId);
+  const history = exerciseHistory(data, log.exerciseId, dayId, 3);
   const overload = overloadSuggestion(data, log.exerciseId, target, dayId);
-  const prevWork = last ? last.sets.filter((s) => !s.warmup) : [];
   const doneCount = log.sets.filter((s) => s.done && !s.warmup).length;
   const workCount = log.sets.filter((s) => !s.warmup).length;
   const hasWarmup = log.sets.some((s) => s.warmup);
@@ -159,10 +167,11 @@ export default function ExerciseCard({ data, log, dayId, onMutate, onSetDone, on
         </div>
       </header>
 
+      {history.length > 0 && <LastTime history={history} />}
+
       <div className="mb-0.5 flex items-center gap-2 px-1" aria-hidden>
         <div className="w-7 shrink-0 text-center leading-tight">
           <span className="display block text-[9px] font-semibold uppercase tracking-wide text-faint">Set</span>
-          <span className="block text-[8px] uppercase tracking-wide text-faint/70">last</span>
         </div>
         <span className="display min-w-0 flex-1 text-center text-[9px] font-semibold uppercase tracking-wide text-faint">
           Weight kg
@@ -178,15 +187,11 @@ export default function ExerciseCard({ data, log, dayId, onMutate, onSetDone, on
       <div className="space-y-1">
         {log.sets.map((set, i) => {
           const idx = set.warmup ? 0 : ++workIndex;
-          const prev = !set.warmup && prevWork[idx - 1]
-            ? prevLabel(prevWork[idx - 1].weight, prevWork[idx - 1].reps)
-            : null;
           return (
             <SetRow
               key={i}
               index={idx}
               set={set}
-              prev={prev}
               increment={data.settings.increment}
               onChange={(s) => setSet(i, s)}
             />
@@ -234,5 +239,53 @@ export default function ExerciseCard({ data, log, dayId, onMutate, onSetDone, on
         )}
       </footer>
     </section>
+  );
+}
+
+const shortDate = (t: number) =>
+  new Date(t).toLocaleDateString("en-GB", { day: "numeric", month: "short" });
+const setsLabel = (e: ExerciseHistoryEntry) =>
+  e.sets.map((s) => `${formatWeight(s.weight)}×${s.reps}`).join("  ");
+
+/**
+ * One dim, tappable line under the exercise: last session's working sets at a
+ * glance, expanding to the last few sessions on tap. Kept deliberately quiet so
+ * it never competes with the live inputs.
+ */
+function LastTime({ history }: { history: ExerciseHistoryEntry[] }) {
+  const [open, setOpen] = useState(false);
+  const canExpand = history.length > 1;
+
+  return (
+    <button
+      type="button"
+      onClick={() => canExpand && setOpen((o) => !o)}
+      aria-label="Last time"
+      className={`mb-1.5 flex w-full items-center gap-1.5 rounded-lg px-1 py-0.5 text-left text-[11px] text-faint ${
+        canExpand ? "transition-colors duration-150 active:text-muted" : ""
+      }`}
+    >
+      <span className="display shrink-0 font-semibold uppercase tracking-wide text-faint/70">Last</span>
+      {open ? (
+        <span className="num flex min-w-0 flex-1 flex-col gap-0.5">
+          {history.map((e, i) => (
+            <span key={i} className="truncate">
+              <span className="text-faint/60">{shortDate(e.startedAt)}</span>  {setsLabel(e)}
+            </span>
+          ))}
+        </span>
+      ) : (
+        <span className="num min-w-0 flex-1 truncate">
+          {setsLabel(history[0])}
+          <span className="text-faint/60">  ·  {shortDate(history[0].startedAt)}</span>
+        </span>
+      )}
+      {canExpand &&
+        (open ? (
+          <ChevronUpIcon className="h-3 w-3 shrink-0" />
+        ) : (
+          <ChevronDownIcon className="h-3 w-3 shrink-0" />
+        ))}
+    </button>
   );
 }

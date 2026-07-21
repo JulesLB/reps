@@ -2,10 +2,10 @@
 
 import { useState } from "react";
 import type { AppData, MuscleGroup } from "@/lib/types";
-import { update } from "@/lib/store";
+import { uid, update } from "@/lib/store";
 import { planWeek } from "@/lib/logic";
 import ExercisePicker from "./ExercisePicker";
-import { CheckIcon, ChevronDownIcon, ChevronUpIcon, MinusIcon, PlusIcon, TrashIcon, XIcon } from "./icons";
+import { CheckIcon, ChevronDownIcon, ChevronUpIcon, CopyIcon, MinusIcon, PlusIcon, TrashIcon, XIcon } from "./icons";
 
 const MUSCLES: MuscleGroup[] = [
   "chest", "back", "shoulders", "biceps", "triceps",
@@ -16,9 +16,11 @@ interface EditDaySheetProps {
   data: AppData;
   dayId: string;
   onClose: () => void;
+  /** Switch the editor to another day (used after duplicating). */
+  onSwitchDay?: (id: string) => void;
 }
 
-export default function EditDaySheet({ data, dayId, onClose }: EditDaySheetProps) {
+export default function EditDaySheet({ data, dayId, onClose, onSwitchDay }: EditDaySheetProps) {
   const day = data.days.find((d) => d.id === dayId);
   const [showPicker, setShowPicker] = useState(false);
   if (!day) return null;
@@ -40,6 +42,23 @@ export default function EditDaySheet({ data, dayId, onClose }: EditDaySheetProps
       if (j < 0 || j >= t.entries.length) return;
       [t.entries[i], t.entries[j]] = [t.entries[j], t.entries[i]];
     });
+  };
+
+  const duplicate = () => {
+    const id = uid();
+    update((d) => {
+      const src = d.days.find((x) => x.id === dayId);
+      if (!src) return;
+      d.days.push({
+        id,
+        name: `${src.name} copy`,
+        style: src.style,
+        entries: src.entries.map((e) => ({ ...e })),
+        exerciseIds: [...src.exerciseIds],
+      });
+    });
+    // Lands outside the cycle; the user adds it to the rotation from the home screen.
+    onSwitchDay?.(id);
   };
 
   const deleteDay = () => {
@@ -169,11 +188,19 @@ export default function EditDaySheet({ data, dayId, onClose }: EditDaySheetProps
           <PlusIcon className="h-4 w-4" /> Add exercise
         </button>
 
+        <button
+          type="button"
+          onClick={duplicate}
+          className="mt-6 flex w-full items-center justify-center gap-2 rounded-2xl border border-line py-3.5 text-sm font-semibold text-muted transition-colors duration-150 hover:border-volt/40 hover:text-ink"
+        >
+          <CopyIcon className="h-4 w-4" /> Duplicate this session type
+        </button>
+
         {data.days.length > 1 && (
           <button
             type="button"
             onClick={deleteDay}
-            className="mt-6 flex w-full items-center justify-center gap-2 rounded-2xl border border-warn/30 py-3.5 text-sm font-semibold text-warn transition-colors duration-150 hover:bg-warn/10"
+            className="mt-2 flex w-full items-center justify-center gap-2 rounded-2xl border border-warn/30 py-3.5 text-sm font-semibold text-warn transition-colors duration-150 hover:bg-warn/10"
           >
             <TrashIcon className="h-4 w-4" /> Delete this session type
           </button>

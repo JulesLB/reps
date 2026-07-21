@@ -85,6 +85,8 @@ export interface Settings {
   /** Default rest in seconds by exercise class. */
   restCompound: number;
   restIsolation: number;
+  /** Shorter rest for small, fast-recovering muscles (calves, lateral raises, abs). */
+  restShort: number;
 }
 
 export interface AppData {

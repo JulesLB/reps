@@ -157,6 +157,7 @@ export function defaultSettings(): Settings {
     targetReps: 8,
     restCompound: 150,
     restIsolation: 90,
+    restShort: 60,
   };
 }
 

@@ -56,7 +56,15 @@ export default function TrainPage() {
     return (
       <>
         <ActiveSession data={data} onFinished={setSummary} />
-        {editDay && <EditDaySheet data={data} dayId={editDay} onClose={() => setEditDay(null)} />}
+        {editDay && (
+          <EditDaySheet
+            key={editDay}
+            data={data}
+            dayId={editDay}
+            onClose={() => setEditDay(null)}
+            onSwitchDay={setEditDay}
+          />
+        )}
       </>
     );
   }
@@ -64,7 +72,15 @@ export default function TrainPage() {
   return (
     <>
       <TrainHome data={data} onEdit={setEditDay} onCreate={() => setCreating(true)} />
-      {editDay && <EditDaySheet data={data} dayId={editDay} onClose={() => setEditDay(null)} />}
+      {editDay && (
+        <EditDaySheet
+          key={editDay}
+          data={data}
+          dayId={editDay}
+          onClose={() => setEditDay(null)}
+          onSwitchDay={setEditDay}
+        />
+      )}
       {creating && (
         <NewDaySheet
           onCreate={(id) => {

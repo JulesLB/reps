@@ -3,17 +3,15 @@
 import type { SetLog } from "@/lib/types";
 import NumberField from "./NumberField";
 import { CheckIcon } from "./icons";
-import { formatWeight } from "@/lib/logic";
 
 interface SetRowProps {
   index: number;
   set: SetLog;
-  prev: string | null;
   increment: number;
   onChange: (s: SetLog) => void;
 }
 
-export default function SetRow({ index, set, prev, increment, onChange }: SetRowProps) {
+export default function SetRow({ index, set, increment, onChange }: SetRowProps) {
   const toggle = () => {
     if (!set.done && typeof navigator !== "undefined" && navigator.vibrate) navigator.vibrate(18);
     onChange({ ...set, done: !set.done });
@@ -33,9 +31,6 @@ export default function SetRow({ index, set, prev, increment, onChange }: SetRow
         >
           {set.warmup ? "W" : index}
         </span>
-        {prev && (
-          <div className="num text-[10px] leading-tight text-faint">{prev}</div>
-        )}
       </div>
       <NumberField
         label={`Set ${index} weight`}
@@ -65,8 +60,4 @@ export default function SetRow({ index, set, prev, increment, onChange }: SetRow
       </button>
     </div>
   );
-}
-
-export function prevLabel(weight: number, reps: number): string {
-  return `${formatWeight(weight)}×${reps}`;
 }

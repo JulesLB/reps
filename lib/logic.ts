@@ -132,6 +132,39 @@ export function lastLogFor(data: AppData, exerciseId: string, dayId?: string): E
   return null;
 }
 
+export interface ExerciseHistoryEntry {
+  startedAt: number;
+  sets: SetLog[];
+}
+
+/**
+ * The last `n` sessions that logged real work for this exercise, newest first,
+ * each reduced to its done work sets. Prefers the current day type so the
+ * "last time" line matches what you're training, falling back to any day type
+ * when this one has no history (a fresh day, or right after a rename).
+ */
+export function exerciseHistory(
+  data: AppData,
+  exerciseId: string,
+  dayId: string | undefined,
+  n: number
+): ExerciseHistoryEntry[] {
+  const collect = (scoped: boolean): ExerciseHistoryEntry[] => {
+    const out: ExerciseHistoryEntry[] = [];
+    for (const session of finishedSessions(data)) {
+      if (scoped && dayId && session.dayId !== dayId) continue;
+      const log = session.logs.find(
+        (l) => l.exerciseId === exerciseId && l.sets.some((s) => s.done && !s.warmup)
+      );
+      if (log) out.push({ startedAt: session.startedAt, sets: log.sets.filter((s) => s.done && !s.warmup) });
+      if (out.length === n) break;
+    }
+    return out;
+  };
+  const scoped = dayId ? collect(true) : [];
+  return scoped.length ? scoped : collect(false);
+}
+
 export interface OverloadSuggestion {
   from: number;
   to: number;
@@ -251,13 +284,22 @@ export function buildSession(data: AppData, day: DayTemplate, now: number): Sess
 
 /* ---- rest -------------------------------------------------------------- */
 
-const COMPOUND = /press|row|pulldown|pull-?up|chin|squat|deadlift|thrust|dip|lunge/i;
+// Word boundaries on the short tokens so "chin" doesn't match "maCHINe" and
+// "dip" doesn't match a random substring — otherwise every "… Machine"
+// isolation lift got wrongly tagged compound and pushed to the long rest.
+const COMPOUND = /press|row|pulldown|pull-?up|\bchin\b|squat|deadlift|thrust|\bdips?\b|lunge/i;
+// Small, fast-recovering muscles that don't need the full isolation rest.
+const SHORT = /lateral raise|rear delt|reverse pec|face pull|calf|crunch|plank/i;
 
 export function restFor(data: AppData, exerciseId: string): number {
   const ex = data.exercises[exerciseId];
   if (!ex) return data.settings.restIsolation;
   if (ex.rest) return ex.rest;
-  return COMPOUND.test(ex.name) ? data.settings.restCompound : data.settings.restIsolation;
+  if (COMPOUND.test(ex.name)) return data.settings.restCompound;
+  if (ex.muscle === "calves" || ex.muscle === "core" || SHORT.test(ex.name)) {
+    return data.settings.restShort ?? 60;
+  }
+  return data.settings.restIsolation;
 }
 
 /* ---- session stats ----------------------------------------------------- */
