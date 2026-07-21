@@ -88,13 +88,19 @@ export interface Settings {
 }
 
 export interface AppData {
-  version: 3;
+  version: 4;
   exercises: Record<string, Exercise>;
   days: DayTemplate[];
   /** Ordered training cycle of day ids; a day may appear more than once. */
   rotation: string[];
   /** ISO date of the start of plan week 1; drives rehab gates. */
   planStart: string;
+  /**
+   * When exercises/days/rotation/planStart/settings last changed, tracked
+   * separately from session activity so sync can merge the two independently
+   * — logging a workout must never make a stale plan edit look "newer".
+   */
+  planUpdatedAt: number;
   sessions: Session[];
   active: Session | null;
   settings: Settings;

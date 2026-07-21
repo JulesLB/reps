@@ -1,27 +1,22 @@
 "use client";
 
 import type { AppData } from "./types";
-import { getData, isPristine, localStamp, onChange, replaceAll } from "./store";
+import { applyMerged, getData, onChange } from "./store";
+import { mergeAppData, sameAppData } from "./merge";
 import { supabase, syncEnabled } from "./supabase";
 
 export type SyncState = "off" | "signed-out" | "idle" | "syncing" | "error" | "offline";
 
-interface Remote {
-  data: AppData;
-  stamp: number;
-}
-
-async function fetchRemote(userId: string): Promise<Remote | null> {
+async function fetchRemote(userId: string): Promise<AppData | null> {
   const sb = supabase();
   if (!sb) return null;
   const { data: row, error } = await sb
     .from("app_data")
-    .select("data, updated_at")
+    .select("data")
     .eq("user_id", userId)
     .maybeSingle();
   if (error) throw error;
-  if (!row) return null;
-  return { data: row.data as AppData, stamp: new Date(row.updated_at as string).getTime() };
+  return row ? (row.data as AppData) : null;
 }
 
 async function pushRemote(userId: string, payload: AppData): Promise<void> {
@@ -34,61 +29,62 @@ async function pushRemote(userId: string, payload: AppData): Promise<void> {
 }
 
 /**
- * Decides what happens the first time a device meets the cloud.
- *
- * The rule that matters: a device holding real sessions never gets silently
- * overwritten by an emptier cloud. That is the migration case, phone full and
- * cloud blank, and getting it backwards would lose everything.
+ * The one place that talks to the cloud. Always fetches remote, merges it
+ * with local (lib/merge.ts), applies the merge locally if it added anything,
+ * and pushes the merge back if it added anything the cloud didn't have. Never
+ * a blind push of raw local state, never a blind overwrite of local state —
+ * that combination is what let a stale browser tab clobber newer phone data
+ * on 2026-07-21.
  */
-export async function reconcile(userId: string): Promise<"pushed" | "pulled" | "noop"> {
+async function syncOnce(userId: string): Promise<"pushed" | "pulled" | "noop"> {
   const local = getData();
   const remote = await fetchRemote(userId);
-
   if (!remote) {
     await pushRemote(userId, local);
     return "pushed";
   }
 
-  const localEmpty = isPristine(local);
-  const remoteEmpty = isPristine(remote.data);
+  const merged = mergeAppData(local, remote);
+  const localChanged = !sameAppData(merged, local);
+  const remoteChanged = !sameAppData(merged, remote);
 
-  if (localEmpty && !remoteEmpty) {
-    replaceAll(remote.data, remote.stamp);
-    return "pulled";
-  }
+  if (localChanged) applyMerged(merged);
+  if (remoteChanged) await pushRemote(userId, merged);
 
-  if (!localEmpty && remoteEmpty) {
-    await pushRemote(userId, local);
-    return "pushed";
-  }
+  if (!localChanged && !remoteChanged) return "noop";
+  return localChanged ? "pulled" : "pushed";
+}
 
-  if (localEmpty && remoteEmpty) return "noop";
+// Serialize every sync attempt so overlapping triggers (a focus event landing
+// mid-debounce, say) can't race each other against the same remote row.
+let inFlight: Promise<"pushed" | "pulled" | "noop"> = Promise.resolve("noop");
 
-  // Both hold real data: newer wins, and replaceAll keeps the loser recoverable.
-  if (remote.stamp > localStamp()) {
-    replaceAll(remote.data, remote.stamp);
-    return "pulled";
-  }
-  await pushRemote(userId, local);
-  return "pushed";
+function runSync(userId: string): Promise<"pushed" | "pulled" | "noop"> {
+  const next = inFlight.catch(() => "noop" as const).then(() => syncOnce(userId));
+  inFlight = next;
+  return next;
+}
+
+export async function reconcile(userId: string): Promise<"pushed" | "pulled" | "noop"> {
+  return runSync(userId);
 }
 
 let timer: ReturnType<typeof setTimeout> | null = null;
-let pending = false;
+let dirty = false;
 
-/** Debounced push, so tapping through a set doesn't fire a request per tap. */
-function schedulePush(userId: string, onState: (s: SyncState) => void): void {
-  pending = true;
+/** Debounced sync, so tapping through a set doesn't fire a request per tap. */
+function scheduleSync(userId: string, onState: (s: SyncState) => void): void {
+  dirty = true;
   if (timer) clearTimeout(timer);
   timer = setTimeout(async () => {
-    if (!pending) return;
-    pending = false;
+    if (!dirty) return;
+    dirty = false;
     onState("syncing");
     try {
-      await pushRemote(userId, getData());
+      await runSync(userId);
       onState("idle");
     } catch {
-      pending = true;
+      dirty = true;
       onState(navigator.onLine ? "error" : "offline");
     }
   }, 2500);
@@ -102,13 +98,11 @@ export function startSync(userId: string, onState: (s: SyncState) => void): () =
 
   let stopped = false;
 
-  const pullIfNewer = async () => {
+  const syncNow = async () => {
     if (stopped) return;
+    onState("syncing");
     try {
-      const remote = await fetchRemote(userId);
-      if (remote && remote.stamp > localStamp() && !pending) {
-        replaceAll(remote.data, remote.stamp);
-      }
+      await runSync(userId);
       onState("idle");
     } catch {
       onState(navigator.onLine ? "error" : "offline");
@@ -116,33 +110,32 @@ export function startSync(userId: string, onState: (s: SyncState) => void): () =
   };
 
   const unsubscribe = onChange((source) => {
-    if (source === "local") schedulePush(userId, onState);
+    if (source === "local") scheduleSync(userId, onState);
   });
 
-  const onFocus = () => void pullIfNewer();
+  const onFocus = () => void syncNow();
   const onOnline = () => {
-    if (pending) schedulePush(userId, onState);
-    void pullIfNewer();
+    if (dirty) scheduleSync(userId, onState);
+    else void syncNow();
+  };
+  // visibilitychange, not just window focus: switching into a background tab
+  // does not reliably fire a window "focus" event in most browsers, which is
+  // exactly how a stale tab went unreconciled on 2026-07-21.
+  const onVisible = () => {
+    if (document.visibilityState === "visible") void syncNow();
+    else if (dirty) void syncNow(); // best-effort flush when backgrounding mid-workout
   };
 
   window.addEventListener("focus", onFocus);
   window.addEventListener("online", onOnline);
-
-  // Best-effort flush when the app goes to the background mid-workout.
-  const onHide = () => {
-    if (document.visibilityState === "hidden" && pending) {
-      const sb = supabase();
-      if (sb) void pushRemote(userId, getData()).catch(() => {});
-    }
-  };
-  document.addEventListener("visibilitychange", onHide);
+  document.addEventListener("visibilitychange", onVisible);
 
   return () => {
     stopped = true;
     unsubscribe();
     window.removeEventListener("focus", onFocus);
     window.removeEventListener("online", onOnline);
-    document.removeEventListener("visibilitychange", onHide);
+    document.removeEventListener("visibilitychange", onVisible);
     if (timer) clearTimeout(timer);
   };
 }

@@ -15,6 +15,7 @@ import type { AppData, Session } from "@/lib/types";
 import { ChevronDownIcon, ChevronUpIcon, SettingsIcon, XIcon } from "@/components/icons";
 import { DayIcon } from "@/components/DayIcons";
 import SyncPanel from "@/components/SyncPanel";
+import RecoverPanel from "@/components/RecoverPanel";
 
 export default function HistoryPage() {
   const data = useAppData();
@@ -210,6 +211,7 @@ function SettingsSheet({ data, onClose }: { data: AppData; onClose: () => void }
           </button>
         </header>
         <div className="space-y-2">
+          <RecoverPanel />
           <SyncPanel />
           <button
             type="button"

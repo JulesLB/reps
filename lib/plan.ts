@@ -176,13 +176,21 @@ export function migrate(raw: unknown): AppData {
     days?: unknown;
     schedule?: (string | null)[];
   };
-  if (d.version === 3) return d as AppData;
+  if (d.version === 4) return d as AppData;
+
+  if (d.version === 3) {
+    const next = d as unknown as AppData;
+    next.version = 4;
+    next.planUpdatedAt = 0;
+    return next;
+  }
 
   if (d.version === 2) {
     const fromSchedule = (d.schedule ?? []).filter((x): x is string => Boolean(x));
     const next = d as unknown as AppData;
     next.rotation = fromSchedule.length ? fromSchedule : planRotation();
-    next.version = 3;
+    next.version = 4;
+    next.planUpdatedAt = 0;
     delete (next as { schedule?: unknown }).schedule;
     return next;
   }
@@ -221,11 +229,12 @@ export function migrate(raw: unknown): AppData {
   );
 
   return {
-    version: 3,
+    version: 4,
     exercises,
     days: [...planDays, ...kept],
     rotation: planRotation(),
     planStart: PLAN_START,
+    planUpdatedAt: 0,
     sessions,
     active: d.active ?? null,
     settings,

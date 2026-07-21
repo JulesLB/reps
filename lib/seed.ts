@@ -27,11 +27,12 @@ export function emptyData(): AppData {
   const exercises: Record<string, Exercise> = {};
   for (const [id, name, muscle] of EXERCISES) exercises[id] = { id, name, muscle };
   return {
-    version: 3,
+    version: 4,
     exercises,
     days: buildPlanDays(exercises),
     rotation: planRotation(),
     planStart: PLAN_START,
+    planUpdatedAt: 0,
     sessions: [],
     active: null,
     settings: defaultSettings(),

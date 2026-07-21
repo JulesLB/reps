@@ -6,13 +6,25 @@ import { emptyData } from "./seed";
 import { migrate } from "./plan";
 
 const KEY = "gym-tracker-v1";
-const CURRENT_VERSION = 3;
+const CURRENT_VERSION = 4;
 const STAMP_KEY = "gym-tracker-updated-at";
 const RESCUE_KEY = "gym-tracker-rescue";
 
 let data: AppData | null = null;
+let lastPlanSig: string | null = null;
 const listeners = new Set<() => void>();
 const changeListeners = new Set<(source: "local" | "remote") => void>();
+
+/** Fingerprint of the plan-only slice of AppData, used to detect a genuine plan edit. */
+function planSignature(d: AppData): string {
+  return JSON.stringify({
+    exercises: d.exercises,
+    days: d.days,
+    rotation: d.rotation,
+    planStart: d.planStart,
+    settings: d.settings,
+  });
+}
 
 function load(): AppData {
   if (data) return data;
@@ -22,6 +34,7 @@ function load(): AppData {
       const parsed = JSON.parse(raw) as { version?: number };
       const stale = parsed.version !== CURRENT_VERSION;
       data = migrate(parsed);
+      lastPlanSig = planSignature(data);
       if (stale) save();
       return data;
     }
@@ -29,6 +42,7 @@ function load(): AppData {
     // corrupted storage: start fresh
   }
   data = emptyData();
+  lastPlanSig = planSignature(data);
   save();
   return data;
 }
@@ -38,9 +52,19 @@ function requestPersistence(): void {
   navigator.storage?.persist?.().catch(() => {});
 }
 
+/**
+ * Persist a local edit. Bumps planUpdatedAt only when the plan-only slice
+ * actually changed, so sync can tell a plan edit apart from ordinary session
+ * activity (see lib/merge.ts).
+ */
 function save(): void {
   if (!data) return;
   try {
+    const sig = planSignature(data);
+    if (sig !== lastPlanSig) {
+      lastPlanSig = sig;
+      data.planUpdatedAt = Date.now();
+    }
     localStorage.setItem(KEY, JSON.stringify(data));
     localStorage.setItem(STAMP_KEY, String(Date.now()));
   } catch {
@@ -80,31 +104,25 @@ export function getData(): AppData {
   return load();
 }
 
-export function localStamp(): number {
-  const raw = localStorage.getItem(STAMP_KEY);
-  return raw ? Number(raw) || 0 : 0;
-}
-
-/** True when nothing has been logged yet, so overwriting costs nothing. */
-export function isPristine(d: AppData = load()): boolean {
-  return d.sessions.length === 0 && !d.active;
-}
-
 /**
- * Overwrite local state with a remote snapshot. The version being replaced is
- * always stashed under RESCUE_KEY first, so a bad sync is recoverable.
+ * Adopt an already-merged snapshot (lib/merge.ts) as local state. The version
+ * being replaced is always stashed under RESCUE_KEY first, so a bad sync
+ * stays recoverable. Writes the merge's own planUpdatedAt verbatim rather
+ * than re-stamping it to now, so a plan edit's real timestamp survives
+ * however many devices relay it.
  */
-export function replaceAll(next: AppData, stamp: number): void {
+export function applyMerged(next: AppData): void {
   try {
     const current = localStorage.getItem(KEY);
     if (current) localStorage.setItem(RESCUE_KEY, current);
   } catch {
     // best effort only
   }
-  data = migrate(next);
+  data = next;
+  lastPlanSig = planSignature(data);
   try {
     localStorage.setItem(KEY, JSON.stringify(data));
-    localStorage.setItem(STAMP_KEY, String(stamp));
+    localStorage.setItem(STAMP_KEY, String(Date.now()));
   } catch {
     // keep in-memory state
   }
@@ -119,12 +137,20 @@ export function onChange(cb: (source: "local" | "remote") => void): () => void {
   };
 }
 
-/** The snapshot displaced by the last replaceAll, if any. */
+/** The snapshot displaced by the last applyMerged call, if any. */
 export function rescueSnapshot(): AppData | null {
   try {
     const raw = localStorage.getItem(RESCUE_KEY);
-    return raw ? (JSON.parse(raw) as AppData) : null;
+    return raw ? migrate(JSON.parse(raw)) : null;
   } catch {
     return null;
+  }
+}
+
+export function clearRescueSnapshot(): void {
+  try {
+    localStorage.removeItem(RESCUE_KEY);
+  } catch {
+    // ignore
   }
 }
