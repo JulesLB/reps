@@ -26,7 +26,16 @@ function mergeDiscarded(a: string[], b: string[]): string[] {
 function pickActive(a: Session | null, b: Session | null): Session | null {
   if (!a) return b;
   if (!b) return a;
-  if (a.id === b.id) return sessionWeight(a) >= sessionWeight(b) ? a : b;
+  if (a.id === b.id) {
+    // Same live session on two devices: the most recently edited copy wins, so
+    // deleting an exercise (which drops the logged-set count) sticks instead of
+    // losing to a heavier pre-delete copy. Fall back to weight only when a
+    // timestamp is missing or tied (legacy blobs, simultaneous edits).
+    const at = a.updatedAt ?? 0;
+    const bt = b.updatedAt ?? 0;
+    if (at !== bt) return at > bt ? a : b;
+    return sessionWeight(a) >= sessionWeight(b) ? a : b;
+  }
   return a.startedAt >= b.startedAt ? a : b;
 }
 

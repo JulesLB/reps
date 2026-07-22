@@ -74,6 +74,13 @@ export interface Session {
   date: string;
   startedAt: number;
   finishedAt?: number;
+  /**
+   * When this session's contents last changed on some device. Lets the merge
+   * pick the most recently edited copy of the *active* session, so deleting an
+   * exercise (which lowers the logged-set count) sticks instead of losing to a
+   * heavier pre-delete copy on the next sync. Absent on legacy blobs.
+   */
+  updatedAt?: number;
   logs: ExerciseLog[];
 }
 

@@ -12,6 +12,7 @@ const RESCUE_KEY = "gym-tracker-rescue";
 
 let data: AppData | null = null;
 let lastPlanSig: string | null = null;
+let lastActiveSig: string | null = null;
 const listeners = new Set<() => void>();
 const changeListeners = new Set<(source: "local" | "remote") => void>();
 
@@ -26,6 +27,13 @@ function planSignature(d: AppData): string {
   });
 }
 
+/** Fingerprint of the active session's contents, ignoring its own updatedAt stamp. */
+function activeSignature(d: AppData): string {
+  if (!d.active) return "";
+  const { updatedAt: _ignored, ...rest } = d.active;
+  return JSON.stringify(rest);
+}
+
 function load(): AppData {
   if (data) return data;
   try {
@@ -35,6 +43,7 @@ function load(): AppData {
       const stale = parsed.version !== CURRENT_VERSION;
       data = migrate(parsed);
       lastPlanSig = planSignature(data);
+      lastActiveSig = activeSignature(data);
       if (stale) save();
       return data;
     }
@@ -43,6 +52,7 @@ function load(): AppData {
   }
   data = emptyData();
   lastPlanSig = planSignature(data);
+  lastActiveSig = activeSignature(data);
   save();
   return data;
 }
@@ -64,6 +74,11 @@ function save(): void {
     if (sig !== lastPlanSig) {
       lastPlanSig = sig;
       data.planUpdatedAt = Date.now();
+    }
+    const asig = activeSignature(data);
+    if (asig !== lastActiveSig) {
+      lastActiveSig = asig;
+      if (data.active) data.active.updatedAt = Date.now();
     }
     localStorage.setItem(KEY, JSON.stringify(data));
     localStorage.setItem(STAMP_KEY, String(Date.now()));
@@ -120,6 +135,7 @@ export function applyMerged(next: AppData): void {
   }
   data = next;
   lastPlanSig = planSignature(data);
+  lastActiveSig = activeSignature(data);
   try {
     localStorage.setItem(KEY, JSON.stringify(data));
     localStorage.setItem(STAMP_KEY, String(Date.now()));
