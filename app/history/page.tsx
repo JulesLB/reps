@@ -11,11 +11,19 @@ import {
   sessionSetCounts,
   sessionVolume,
 } from "@/lib/logic";
-import type { AppData, Session } from "@/lib/types";
+import type { Activity, AppData, Session } from "@/lib/types";
 import { migrate } from "@/lib/plan";
 import { recordPlan } from "@/lib/planHistory";
+import { deleteActivity } from "@/lib/coach";
 import { blobSize, MAX_IMPORT_BYTES, MAX_SESSIONS } from "@/lib/limits";
-import { ChevronDownIcon, ChevronUpIcon, SettingsIcon, TrashIcon, XIcon } from "@/components/icons";
+import {
+  ChevronDownIcon,
+  ChevronUpIcon,
+  MountainIcon,
+  SettingsIcon,
+  TrashIcon,
+  XIcon,
+} from "@/components/icons";
 import { DayIcon } from "@/components/DayIcons";
 import SyncPanel from "@/components/SyncPanel";
 import RecoverPanel from "@/components/RecoverPanel";
@@ -30,6 +38,14 @@ export default function HistoryPage() {
   if (!data) return <div className="h-48 animate-pulse rounded-3xl bg-surface" />;
 
   const sessions = finishedSessions(data);
+  // Hikes sit in the same timeline as gym sessions: they are training too.
+  // An activity's date has no time of day, so pin it to noon for ordering.
+  const timeline: Array<{ t: number; session?: Session; activity?: Activity }> = [
+    ...sessions.map((s) => ({ t: s.startedAt, session: s })),
+    ...data.activities
+      .filter((a) => !a.deleted)
+      .map((a) => ({ t: new Date(`${a.date}T12:00:00`).getTime(), activity: a })),
+  ].sort((a, b) => b.t - a.t);
 
   return (
     <div className="pt-2">
@@ -47,23 +63,72 @@ export default function HistoryPage() {
 
       <StorageWarning />
 
-      {sessions.length === 0 && (
+      {timeline.length === 0 && (
         <p className="mt-12 text-center text-muted">No sessions yet. Go lift something.</p>
       )}
 
       <div className="space-y-2">
-        {sessions.map((session) => (
-          <SessionCard
-            key={session.id}
-            data={data}
-            session={session}
-            open={open === session.id}
-            onToggle={() => setOpen(open === session.id ? null : session.id)}
-          />
-        ))}
+        {timeline.map((item) =>
+          item.session ? (
+            <SessionCard
+              key={item.session.id}
+              data={data}
+              session={item.session}
+              open={open === item.session.id}
+              onToggle={() => setOpen(open === item.session!.id ? null : item.session!.id)}
+            />
+          ) : (
+            <ActivityCard key={item.activity!.id} activity={item.activity!} />
+          )
+        )}
       </div>
 
       {showSettings && <SettingsSheet data={data} onClose={() => setShowSettings(false)} />}
+    </div>
+  );
+}
+
+function ActivityCard({ activity }: { activity: Activity }) {
+  const dateLabel = new Date(`${activity.date}T12:00:00`).toLocaleDateString("en-GB", {
+    weekday: "short",
+    day: "numeric",
+    month: "short",
+  });
+  const detail = [
+    `${activity.minutes} min`,
+    activity.distanceKm ? `${activity.distanceKm} km` : null,
+    activity.elevationM ? `${activity.elevationM} m↑` : null,
+  ]
+    .filter(Boolean)
+    .join(" · ");
+
+  const del = () => {
+    if (!confirm(`Delete this ${activity.type} from ${dateLabel}?`)) return;
+    deleteActivity(activity.id);
+  };
+
+  return (
+    <div className="flex items-center gap-3 rounded-2xl border border-line-soft bg-surface p-4">
+      <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-surface-2 text-volt">
+        <MountainIcon className="h-6 w-6" />
+      </div>
+      <div className="min-w-0 flex-1">
+        <p className="display font-semibold uppercase tracking-wide">
+          {activity.type}
+          {activity.note ? <span className="text-muted"> · {activity.note}</span> : null}
+        </p>
+        <p className="num text-xs text-muted">
+          {dateLabel} · {detail}
+        </p>
+      </div>
+      <button
+        type="button"
+        aria-label={`Delete ${activity.type} on ${dateLabel}`}
+        onClick={del}
+        className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-faint transition-colors duration-150 hover:text-warn"
+      >
+        <TrashIcon className="h-4 w-4" />
+      </button>
     </div>
   );
 }

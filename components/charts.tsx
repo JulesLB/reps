@@ -8,7 +8,15 @@ const W = 340;
 const H = 170;
 const PAD = { top: 14, right: 16, bottom: 24, left: 34 };
 
-export function TopSetChart({ points, unit }: { points: SeriesPoint[]; unit: string }) {
+export function TopSetChart({
+  points,
+  unit,
+  label = "Top set weight trend",
+}: {
+  points: SeriesPoint[];
+  unit: string;
+  label?: string;
+}) {
   const ref = useRef<SVGSVGElement>(null);
   const [hover, setHover] = useState<number | null>(null);
 
@@ -61,7 +69,7 @@ export function TopSetChart({ points, unit }: { points: SeriesPoint[]; unit: str
         viewBox={`0 0 ${W} ${H}`}
         className="w-full touch-none select-none"
         role="img"
-        aria-label={`Top set weight trend, currently ${formatWeight(points[last].w)} ${unit}`}
+        aria-label={`${label}, currently ${formatWeight(points[last].w)} ${unit}`}
         onPointerMove={(e) => onMove(e.clientX)}
         onPointerLeave={() => setHover(null)}
       >

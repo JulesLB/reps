@@ -1,4 +1,14 @@
-import type { AppData, DayTemplate, Exercise, MuscleGroup, PlanEntry, Settings } from "./types";
+import type {
+  Activity,
+  AppData,
+  CoachState,
+  DayTemplate,
+  Exercise,
+  HealthData,
+  MuscleGroup,
+  PlanEntry,
+  Settings,
+} from "./types";
 
 /**
  * Start of plan week 1. Rehab and ramp-up gates ("introduce this from week 4")
@@ -217,11 +227,12 @@ export function migrate(raw: unknown): AppData {
     days?: unknown;
     schedule?: (string | null)[];
   };
-  if (d.version === 4) return normalize(d as AppData);
+  // v5 added activities/health/coach; normalize() fills them in when missing,
+  // so v4 blobs need no dedicated step.
+  if (d.version === 5 || d.version === 4) return normalize(d as AppData);
 
   if (d.version === 3) {
     const next = d as unknown as AppData;
-    next.version = 4;
     next.planUpdatedAt = 0;
     return normalize(next);
   }
@@ -230,7 +241,6 @@ export function migrate(raw: unknown): AppData {
     const fromSchedule = (d.schedule ?? []).filter((x): x is string => Boolean(x));
     const next = d as unknown as AppData;
     next.rotation = fromSchedule.length ? fromSchedule : planRotation();
-    next.version = 4;
     next.planUpdatedAt = 0;
     delete (next as { schedule?: unknown }).schedule;
     return normalize(next);
@@ -270,7 +280,7 @@ export function migrate(raw: unknown): AppData {
   );
 
   return normalize({
-    version: 4,
+    version: 5,
     exercises,
     days: [...planDays, ...kept],
     rotation: planRotation(),
@@ -280,7 +290,18 @@ export function migrate(raw: unknown): AppData {
     active: d.active ?? null,
     discardedActiveIds: [],
     settings,
+    activities: [],
+    health: emptyHealth(),
+    coach: emptyCoach(),
   });
+}
+
+export function emptyHealth(): HealthData {
+  return { inbody: [], stepsWeekly: [], updatedAt: 0 };
+}
+
+export function emptyCoach(): CoachState {
+  return { reviews: [], updatedAt: 0 };
 }
 
 /**
@@ -317,11 +338,27 @@ function normalize(d: AppData): AppData {
   const active = d.active ?? null;
   if (active && active.updatedAt != null) active.updatedAt = boundedStamp(active.updatedAt);
 
+  const activities: Activity[] = Array.isArray(d.activities) ? d.activities : [];
+  for (const a of activities) if (a) a.updatedAt = boundedStamp(a.updatedAt);
+
+  const rawHealth = (d.health ?? {}) as Partial<HealthData>;
+  const health: HealthData = {
+    inbody: Array.isArray(rawHealth.inbody) ? rawHealth.inbody : [],
+    stepsWeekly: Array.isArray(rawHealth.stepsWeekly) ? rawHealth.stepsWeekly : [],
+    updatedAt: boundedStamp(rawHealth.updatedAt),
+  };
+
+  const rawCoach = (d.coach ?? {}) as Partial<CoachState>;
+  const coach: CoachState = {
+    reviews: Array.isArray(rawCoach.reviews) ? rawCoach.reviews : [],
+    updatedAt: boundedStamp(rawCoach.updatedAt),
+  };
+
   // Rebuilt field by field rather than passed through, so anything a hand-edited
   // backup file bolted onto the blob is dropped here instead of being persisted
   // and pushed to every other device.
   return {
-    version: 4,
+    version: 5,
     exercises: d.exercises ?? {},
     days: Array.isArray(d.days) ? d.days : [],
     rotation: Array.isArray(d.rotation) && d.rotation.length ? d.rotation : planRotation(),
@@ -331,5 +368,8 @@ function normalize(d: AppData): AppData {
     active,
     discardedActiveIds: Array.isArray(d.discardedActiveIds) ? d.discardedActiveIds : [],
     settings: { ...defaultSettings(), ...(d.settings ?? {}) },
+    activities,
+    health,
+    coach,
   };
 }

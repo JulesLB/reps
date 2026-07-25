@@ -1,5 +1,12 @@
 import type { AppData, Exercise, MuscleGroup } from "./types";
-import { buildPlanDays, defaultSettings, planRotation, PLAN_START } from "./plan";
+import {
+  buildPlanDays,
+  defaultSettings,
+  emptyCoach,
+  emptyHealth,
+  planRotation,
+  PLAN_START,
+} from "./plan";
 
 const EXERCISES: Array<[string, string, MuscleGroup]> = [
   ["chest-press", "Chest Press Machine", "chest"],
@@ -27,7 +34,7 @@ export function emptyData(): AppData {
   const exercises: Record<string, Exercise> = {};
   for (const [id, name, muscle] of EXERCISES) exercises[id] = { id, name, muscle };
   return {
-    version: 4,
+    version: 5,
     exercises,
     days: buildPlanDays(exercises),
     rotation: planRotation(),
@@ -37,5 +44,8 @@ export function emptyData(): AppData {
     active: null,
     discardedActiveIds: [],
     settings: defaultSettings(),
+    activities: [],
+    health: emptyHealth(),
+    coach: emptyCoach(),
   };
 }

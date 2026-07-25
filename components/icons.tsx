@@ -213,6 +213,58 @@ export function CalendarIcon(props: IconProps) {
   );
 }
 
+export function SparkIcon(props: IconProps) {
+  return (
+    <svg {...base(props)}>
+      <path d="M12 3v2.5" />
+      <path d="M12 18.5V21" />
+      <path d="M3 12h2.5" />
+      <path d="M18.5 12H21" />
+      <path d="M12 8.5 13.6 10.9 16 12l-2.4 1.1L12 15.5l-1.6-2.4L8 12l2.4-1.1z" />
+    </svg>
+  );
+}
+
+export function ArmsIcon(props: IconProps) {
+  return (
+    <svg {...base(props)}>
+      <circle cx="12" cy="4.5" r="2.5" />
+      <path d="M3 10.5h18" />
+      <path d="M3 10.5v3M21 10.5v3" />
+      <path d="M12 10.5V21" />
+    </svg>
+  );
+}
+
+export function TrunkIcon(props: IconProps) {
+  return (
+    <svg {...base(props)}>
+      <circle cx="12" cy="4.5" r="2.5" />
+      <path d="M8.5 9.5h7l-1 6h-5z" />
+      <path d="M9.5 15.5V21M14.5 15.5V21" />
+    </svg>
+  );
+}
+
+export function LegsIcon(props: IconProps) {
+  return (
+    <svg {...base(props)}>
+      <circle cx="12" cy="4.5" r="2.5" />
+      <path d="M12 8.5v5" />
+      <path d="m12 13.5-3.5 7.5" />
+      <path d="m12 13.5 3.5 7.5" />
+    </svg>
+  );
+}
+
+export function MountainIcon(props: IconProps) {
+  return (
+    <svg {...base(props)}>
+      <path d="m8 3 4 8 5-5 5 15H2L8 3z" />
+    </svg>
+  );
+}
+
 export function SettingsIcon(props: IconProps) {
   return (
     <svg {...base(props)}>

@@ -1,4 +1,4 @@
-import type { AppData, Session } from "./types";
+import type { Activity, AppData, Session } from "./types";
 import { isStockPlan } from "./plan";
 
 /** More logged sets and a finish beat a thinner or still-in-progress copy of the same session. */
@@ -40,6 +40,29 @@ function pickActive(a: Session | null, b: Session | null): Session | null {
   return a.startedAt >= b.startedAt ? a : b;
 }
 
+/** Union by id; the more recently edited copy of an entry wins. */
+function mergeActivities(a: Activity[], b: Activity[]): Activity[] {
+  const byId = new Map<string, Activity>();
+  for (const x of a ?? []) byId.set(x.id, x);
+  for (const x of b ?? []) {
+    const existing = byId.get(x.id);
+    if (!existing || (x.updatedAt ?? 0) > (existing.updatedAt ?? 0)) byId.set(x.id, x);
+  }
+  return [...byId.values()].sort((x, y) => (x.date < y.date ? -1 : x.date > y.date ? 1 : 0));
+}
+
+/**
+ * Wholesale last-writer-wins for single-writer slices (health and coach are
+ * only ever written by the laptop pipeline). An updatedAt tie with different
+ * content falls back to a content comparison so the pick stays commutative.
+ */
+function pickNewest<T extends { updatedAt: number }>(a: T, b: T): T {
+  const at = a?.updatedAt ?? 0;
+  const bt = b?.updatedAt ?? 0;
+  if (at !== bt) return at > bt ? a : b;
+  return JSON.stringify(a) >= JSON.stringify(b) ? a : b;
+}
+
 /**
  * Merge a remote snapshot into local state without ever silently dropping a
  * logged session: sessions always union by id, keeping whichever copy of a
@@ -74,7 +97,7 @@ export function mergeAppData(local: AppData, remote: AppData): AppData {
   const active = picked && cleared.has(picked.id) ? null : picked;
 
   return {
-    version: 4,
+    version: 5,
     exercises: planWins.exercises,
     days: planWins.days,
     rotation: planWins.rotation,
@@ -84,6 +107,9 @@ export function mergeAppData(local: AppData, remote: AppData): AppData {
     sessions,
     active,
     discardedActiveIds,
+    activities: mergeActivities(local.activities, remote.activities),
+    health: pickNewest(local.health, remote.health),
+    coach: pickNewest(local.coach, remote.coach),
   };
 }
 

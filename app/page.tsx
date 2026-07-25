@@ -28,6 +28,7 @@ import ExerciseCard from "@/components/ExerciseCard";
 import CardioCard from "@/components/CardioCard";
 import EditDaySheet from "@/components/EditDaySheet";
 import ExercisePicker from "@/components/ExercisePicker";
+import HikeSheet from "@/components/HikeLog";
 import { DayIcon } from "@/components/DayIcons";
 import StorageWarning from "@/components/StorageWarning";
 import {
@@ -35,6 +36,7 @@ import {
   ChevronDownIcon,
   ChevronUpIcon,
   FlameIcon,
+  MountainIcon,
   PencilIcon,
   PlusIcon,
   TrophyIcon,
@@ -120,6 +122,7 @@ function TrainHome({
   onEdit: (id: string) => void;
   onCreate: () => void;
 }) {
+  const [loggingHike, setLoggingHike] = useState(false);
   const suggestion = suggestNextDay(data);
   const cycle = rotationDays(data);
   const others = extraDays(data);
@@ -334,11 +337,21 @@ function TrainHome({
 
       <button
         type="button"
-        onClick={onCreate}
+        onClick={() => setLoggingHike(true)}
         className="mt-3 flex h-13 w-full items-center justify-center gap-2 rounded-2xl border border-dashed border-line py-3.5 font-semibold text-muted transition-colors duration-150 hover:border-volt/40 hover:text-ink"
+      >
+        <MountainIcon className="h-4 w-4" /> Log a hike
+      </button>
+
+      <button
+        type="button"
+        onClick={onCreate}
+        className="mt-2 flex h-13 w-full items-center justify-center gap-2 rounded-2xl border border-dashed border-line py-3.5 font-semibold text-muted transition-colors duration-150 hover:border-volt/40 hover:text-ink"
       >
         <PlusIcon className="h-4 w-4" /> New session type
       </button>
+
+      {loggingHike && <HikeSheet onClose={() => setLoggingHike(false)} />}
     </div>
   );
 }

@@ -96,8 +96,113 @@ export interface Settings {
   restShort: number;
 }
 
+export type ActivityType = "hike" | "walk" | "run" | "other";
+
+export interface Activity {
+  id: string;
+  type: ActivityType;
+  /** ISO date (yyyy-mm-dd) the activity happened. */
+  date: string;
+  minutes: number;
+  distanceKm?: number;
+  elevationM?: number;
+  note?: string;
+  /**
+   * Soft-delete flag. The merge unions activities by id, so a removed entry
+   * has to keep existing with a fresher updatedAt or the other device's copy
+   * resurrects it on the next sync.
+   */
+  deleted?: boolean;
+  /** When this entry last changed on some device; drives the merge. */
+  updatedAt: number;
+}
+
+/** Segmental lean mass as % of the ideal for each region, off the InBody sheet. */
+export interface InBodySegmental {
+  arms: number;
+  trunk: number;
+  legs: number;
+}
+
+export interface InBodyEntry {
+  /** ISO date (yyyy-mm-dd) of the scan. */
+  date: string;
+  weightKg: number;
+  /** Skeletal muscle mass. */
+  smmKg: number;
+  /** Percent body fat. */
+  pbf: number;
+  bodyFatKg?: number;
+  bmi?: number;
+  visceralFat?: number;
+  score?: number;
+  segmentalLean?: InBodySegmental;
+}
+
+export interface StepWeek {
+  /** ISO date (yyyy-mm-dd) of the Monday starting the week. */
+  weekStart: string;
+  avgSteps: number;
+  /** How many days of data the average covers. */
+  days: number;
+}
+
+/**
+ * Body metrics and activity data imported from outside the app (InBody scans,
+ * Samsung Health exports). Written by the coach pipeline on the laptop, read
+ * everywhere; last writer wins wholesale in the merge.
+ */
+export interface HealthData {
+  inbody: InBodyEntry[];
+  stepsWeekly: StepWeek[];
+  updatedAt: number;
+}
+
+export type CoachArea =
+  | "weight"
+  | "reps"
+  | "sets"
+  | "exercise"
+  | "sequencing"
+  | "volume"
+  | "balance"
+  | "recovery";
+
+export interface CoachRec {
+  id: string;
+  area: CoachArea;
+  /** 1 = do this first, 3 = nice to have. */
+  priority: 1 | 2 | 3;
+  title: string;
+  detail: string;
+  dayId?: string;
+  exerciseId?: string;
+}
+
+export interface CoachReview {
+  id: string;
+  generatedAt: number;
+  /** ISO dates bounding the training window the review looked at. */
+  periodFrom: string;
+  periodTo: string;
+  headline: string;
+  summary: string;
+  recommendations: CoachRec[];
+  /** Things to keep an eye on rather than act on now. */
+  watch?: string[];
+}
+
+/**
+ * Reviews written by the coach (Claude running locally against the full
+ * history). Single writer, so the merge resolves it by updatedAt wholesale.
+ */
+export interface CoachState {
+  reviews: CoachReview[];
+  updatedAt: number;
+}
+
 export interface AppData {
-  version: 4;
+  version: 5;
   exercises: Record<string, Exercise>;
   days: DayTemplate[];
   /** Ordered training cycle of day ids; a day may appear more than once. */
@@ -121,4 +226,8 @@ export interface AppData {
    */
   discardedActiveIds: string[];
   settings: Settings;
+  /** Hikes, walks, runs logged in-app. */
+  activities: Activity[];
+  health: HealthData;
+  coach: CoachState;
 }
