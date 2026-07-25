@@ -29,6 +29,12 @@ const csp = [
 ].join("; ");
 
 const nextConfig: NextConfig = {
+  // One value per build, inlined into both the client bundle and the
+  // /build-stamp route, so a running tab can tell when a newer deploy exists
+  // (lib/buildStamp.ts). "dev" in development, where staleness is meaningless.
+  env: {
+    NEXT_PUBLIC_BUILD_STAMP: isDev ? "dev" : String(Date.now()),
+  },
   async headers() {
     return [
       {

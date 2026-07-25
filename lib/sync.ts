@@ -1,10 +1,11 @@
 "use client";
 
-import type { AppData } from "./types";
+import { CURRENT_VERSION, type AppData } from "./types";
 import { applyMerged, getData, onChange } from "./store";
 import { mergeAppData, sameAppData } from "./merge";
 import { migrate } from "./plan";
 import { blobSize, MAX_BLOB_BYTES } from "./limits";
+import { reloadIfStale } from "./buildStamp";
 import { supabase, syncEnabled } from "./supabase";
 
 export type SyncState =
@@ -15,10 +16,21 @@ export type SyncState =
   | "error"
   | "offline"
   | "too-big"
-  | "unreadable";
+  | "unreadable"
+  | "outdated";
 
 /** Thrown instead of letting an oversized blob hit the server's size cap. */
 class BlobTooLarge extends Error {}
+
+/**
+ * Thrown when the cloud blob's version is newer than this build understands.
+ * An out-of-date client must never write: its migrate() would strip — or, on
+ * bundles old enough, rebuild from stock — everything it doesn't recognize,
+ * then push the wreckage everywhere. That exact chain wiped the plan and the
+ * coach data three times on 2026-07-25, each time from a stale cached PWA tab.
+ * Reading is fine; merging and pushing are not.
+ */
+class ClientOutdated extends Error {}
 
 /**
  * Thrown when the cloud row this device has synced with before comes back as
@@ -58,6 +70,14 @@ async function fetchRemote(userId: string): Promise<AppData | null> {
     .maybeSingle();
   if (error) throw error;
   if (!row) return null;
+  // Checked on the raw blob, before migrate() has a chance to "fix" it. A
+  // version from the future proves a newer build wrote this data; whatever
+  // this build would make of it is a downgrade it must not push back.
+  const rawVersion = (row.data as { version?: unknown } | null)?.version;
+  if (typeof rawVersion === "number" && rawVersion > CURRENT_VERSION) {
+    void reloadIfStale();
+    throw new ClientOutdated();
+  }
   // A cloud row is untrusted input like any other: it can carry whatever a
   // poisoned import wrote on another device. migrate() bounds the timestamps
   // the merge below resolves on (lib/plan.ts).
@@ -81,6 +101,7 @@ async function pushRemote(userId: string, payload: AppData): Promise<void> {
 export function failureState(err: unknown): SyncState {
   if (err instanceof BlobTooLarge) return "too-big";
   if (err instanceof CloudReadFailed) return "unreadable";
+  if (err instanceof ClientOutdated) return "outdated";
   return navigator.onLine ? "error" : "offline";
 }
 
@@ -93,6 +114,12 @@ export function failureState(err: unknown): SyncState {
  * on 2026-07-21.
  */
 async function syncOnce(userId: string): Promise<"pushed" | "pulled" | "noop"> {
+  // A stale bundle is the one client that can destroy data, and a long-lived
+  // PWA tab resumed days later is exactly how one keeps running. Check for a
+  // newer deploy before touching the cloud; when one exists, the page reloads
+  // itself into the current build and this sync aborts instead of racing the
+  // unload with a write.
+  if (await reloadIfStale()) throw new ClientOutdated();
   const local = getData();
   const remote = await fetchRemote(userId);
   if (!remote) {

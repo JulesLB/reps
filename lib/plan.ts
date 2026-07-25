@@ -257,6 +257,18 @@ export function migrate(raw: unknown): AppData {
     return normalize(next);
   }
 
+  // Last line of defense before the destructive path below: judge the blob by
+  // its shape, not its version field. Days carrying per-exercise entries only
+  // exist from v2 on, so a blob that has them is modern whatever its version
+  // claims — a corrupted or missing version number must degrade the blob at
+  // worst, never feed real data into the stock-plan rebuild.
+  const days = Array.isArray(d.days) ? (d.days as Array<{ entries?: unknown }>) : [];
+  if (days.some((day) => Array.isArray(day?.entries) && day.entries.length > 0)) {
+    const next = d as unknown as AppData;
+    next.planUpdatedAt ??= 0;
+    return normalize(next);
+  }
+
   const exercises: Record<string, Exercise> = (d.exercises as Record<string, Exercise>) ?? {};
   const oldSettings = (d.settings ?? {}) as Partial<Settings>;
   const settings: Settings = { ...defaultSettings(), ...oldSettings };

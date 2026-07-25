@@ -247,6 +247,15 @@ export interface CoachState {
   updatedAt: number;
 }
 
+/**
+ * The schema version this build reads and writes. Sync compares it against the
+ * raw version in a cloud blob before merging: a blob from the future means this
+ * client is out of date, and an out-of-date client must never write — every
+ * data-loss incident so far (2026-07-25, three times) was an old cached bundle
+ * mangling a newer blob and pushing the wreckage.
+ */
+export const CURRENT_VERSION = 6;
+
 export interface AppData {
   version: 6;
   exercises: Record<string, Exercise>;

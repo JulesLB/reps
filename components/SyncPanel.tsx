@@ -13,6 +13,7 @@ const STATUS: Record<string, { label: string; tone: string }> = {
   offline: { label: "Offline, will retry", tone: "text-amber" },
   "too-big": { label: "Too large to sync", tone: "text-warn" },
   unreadable: { label: "Can't read cloud data — nothing overwritten", tone: "text-warn" },
+  outdated: { label: "App out of date — reload to sync", tone: "text-warn" },
 };
 
 export default function SyncPanel() {

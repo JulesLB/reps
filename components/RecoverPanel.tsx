@@ -37,8 +37,13 @@ export default function RecoverPanel() {
   const missing = now ? before.sessionCount - now.sessionCount : 0;
 
   const restore = () => {
-    const boosted: AppData = { ...rescue, planUpdatedAt: Date.now() };
-    const merged = mergeAppData(getData(), boosted);
+    // The snapshot's plan gets no vote: its stamp is zeroed so the merge can
+    // only take sessions and activities from it. This button used to boost the
+    // snapshot's planUpdatedAt to now instead, and restoring an old snapshot
+    // reverted every template edit on every device (2026-07-25, twice). Plan
+    // recovery has its own path with real history (PlanHistoryPanel).
+    const humbled: AppData = { ...rescue, planUpdatedAt: 0 };
+    const merged = mergeAppData(getData(), humbled);
     applyMerged(merged);
     clearRescueSnapshot();
     setDone(true);
@@ -57,10 +62,11 @@ export default function RecoverPanel() {
       <p className="mb-3 text-xs text-muted">
         Your last sync replaced local data. The version it replaced is still on this device:{" "}
         {before.sessionCount} session{before.sessionCount === 1 ? "" : "s"} (last logged{" "}
-        {before.lastDate}), plan: {before.dayNames}.
+        {before.lastDate}).
         {now && missing > 0
           ? ` That's ${missing} more session${missing === 1 ? "" : "s"} than you have now.`
-          : ""}
+          : ""}{" "}
+        Restore adds those sessions back. It never touches your plan.
       </p>
       <div className="flex gap-2">
         <button
