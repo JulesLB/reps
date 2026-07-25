@@ -1,4 +1,5 @@
 import type { AppData, Session } from "./types";
+import { isStockPlan } from "./plan";
 
 /** More logged sets and a finish beat a thinner or still-in-progress copy of the same session. */
 function sessionWeight(s: Session): number {
@@ -51,7 +52,14 @@ function pickActive(a: Session | null, b: Session | null): Session | null {
  * 2026-07-21 when a stale browser tab pushed over newer phone data.
  */
 export function mergeAppData(local: AppData, remote: AppData): AppData {
-  const planWins = remote.planUpdatedAt > local.planUpdatedAt ? remote : local;
+  let planWins = remote.planUpdatedAt > local.planUpdatedAt ? remote : local;
+  // Content veto on top of the timestamp rule: the factory plan never beats a
+  // customized one, no matter how fresh its stamp. A stale stock snapshot
+  // restored with a boosted planUpdatedAt (RecoverPanel, 2026-07-25) won every
+  // merge and reverted the user's templates on every device; content-based,
+  // so it stays commutative.
+  const planLoses = planWins === remote ? local : remote;
+  if (isStockPlan(planWins) && !isStockPlan(planLoses)) planWins = planLoses;
   const sessions = mergeSessions(local.sessions, remote.sessions);
   const discardedActiveIds = mergeDiscarded(local.discardedActiveIds, remote.discardedActiveIds);
 

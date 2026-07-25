@@ -165,6 +165,46 @@ export function planRotation(): string[] {
   return [...PLAN_ROTATION];
 }
 
+/** Order-insensitive fingerprint of what the user actually sees and edits in a plan. */
+function daysFingerprint(days: DayTemplate[]): string {
+  return JSON.stringify(
+    [...(days ?? [])]
+      .map((d) => ({
+        id: d.id,
+        name: d.name,
+        style: d.style ?? "strength",
+        entries: (d.entries ?? []).map((e) => [
+          e.exerciseId,
+          e.sets,
+          e.reps,
+          e.note ?? null,
+          e.fromWeek ?? null,
+        ]),
+      }))
+      .sort((a, b) => (a.id < b.id ? -1 : 1))
+  );
+}
+
+let stockDaysSig: string | null = null;
+
+/**
+ * Whether a plan slice is still the untouched factory default. Used by the
+ * merge (lib/merge.ts) to refuse letting the stock plan overwrite a customized
+ * one on timestamp alone: no device ever has a legitimate reason to assert the
+ * factory plan as a fresh deliberate edit, but several paths can accidentally
+ * put a fresh stamp on it (a restored rescue snapshot did exactly that on
+ * 2026-07-25 and reverted every template rename on every device). A false
+ * negative here is safe — it just falls back to the timestamp rule.
+ */
+export function isStockPlan(d: Pick<AppData, "days" | "rotation" | "planStart">): boolean {
+  if (stockDaysSig === null) stockDaysSig = daysFingerprint(buildPlanDays({}));
+  return (
+    d.planStart === PLAN_START &&
+    JSON.stringify(d.rotation) === JSON.stringify(PLAN_ROTATION) &&
+    daysFingerprint(d.days) === stockDaysSig
+  );
+}
+
 /**
  * Bring any stored blob up to the current schema. v1 stored three fixed
  * push/pull/legs templates with no per-exercise targets; v2 added targets plus

@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import type { AppData } from "./types";
 import { emptyData } from "./seed";
 import { migrate } from "./plan";
+import { recordPlan } from "./planHistory";
 
 const KEY = "gym-tracker-v1";
 const STAMP_KEY = "gym-tracker-updated-at";
@@ -42,6 +43,9 @@ function load(): AppData {
       data = migrate(parsed);
       lastPlanSig = planSignature(data);
       lastActiveSig = activeSignature(data);
+      // Baseline snapshot: catches plans created before history existed and
+      // anything written outside save()/applyMerged (an import, another tab).
+      recordPlan(data);
       // Write back whenever migrate() changed anything, not just on a version
       // bump. An out-of-range timestamp or a field migrate() stripped would
       // otherwise sit in storage indefinitely, sanitized on every read but
@@ -88,6 +92,7 @@ function save(): void {
     if (sig !== lastPlanSig) {
       lastPlanSig = sig;
       data.planUpdatedAt = Date.now();
+      recordPlan(data);
     }
     const asig = activeSignature(data);
     if (asig !== lastActiveSig) {
@@ -141,11 +146,18 @@ export function getData(): AppData {
  * than re-stamping it to now, so a plan edit's real timestamp survives
  * however many devices relay it.
  */
-/** Would adopting `next` drop a session or change the plan that `prev` had? */
+/**
+ * Would adopting `next` drop a logged session `prev` had? Sessions only, on
+ * purpose: a plan change used to count as lossy too, which armed the
+ * RecoverPanel "Backup found" banner on the *other* device after every
+ * ordinary plan edit synced across. Tapping Restore there resurrected the
+ * pre-edit plan with a fresh timestamp and reverted the user's templates
+ * everywhere (2026-07-25, twice). Plan states are archived in
+ * lib/planHistory.ts instead, which restores without that trap.
+ */
 function isLossy(prev: AppData, next: AppData): boolean {
   const keptIds = new Set(next.sessions.map((s) => s.id));
-  if (prev.sessions.some((s) => !keptIds.has(s.id))) return true;
-  return planSignature(prev) !== planSignature(next);
+  return prev.sessions.some((s) => !keptIds.has(s.id));
 }
 
 export function applyMerged(next: AppData): void {
@@ -160,6 +172,12 @@ export function applyMerged(next: AppData): void {
     }
   } catch {
     // best effort only
+  }
+  // Archive both sides of a plan change: the plan being displaced (so a bad
+  // merge is recoverable) and the one arriving (so the timeline stays whole).
+  if (data && planSignature(data) !== planSignature(next)) {
+    recordPlan(data);
+    recordPlan(next);
   }
   data = next;
   lastPlanSig = planSignature(data);
@@ -197,4 +215,25 @@ export function clearRescueSnapshot(): void {
   } catch {
     // ignore
   }
+}
+
+// A second tab keeps its own module-level `data`, so without this it drifts:
+// it renders state from hours ago, and its next update() writes that stale
+// blob back over localStorage as if it were current. Adopt the other tab's
+// write the moment it lands ("storage" only fires in the tabs that didn't
+// write). Notified as "remote" so this tab re-renders without echoing a sync
+// push for data the writing tab is already pushing.
+if (typeof window !== "undefined") {
+  window.addEventListener("storage", (e) => {
+    if (e.key !== KEY || e.newValue == null || !data) return;
+    try {
+      data = migrate(JSON.parse(e.newValue));
+      lastPlanSig = planSignature(data);
+      lastActiveSig = activeSignature(data);
+      listeners.forEach((l) => l());
+      changeListeners.forEach((l) => l("remote"));
+    } catch {
+      // A malformed write from elsewhere: keep this tab's state.
+    }
+  });
 }

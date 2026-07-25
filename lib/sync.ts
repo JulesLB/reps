@@ -14,10 +14,39 @@ export type SyncState =
   | "syncing"
   | "error"
   | "offline"
-  | "too-big";
+  | "too-big"
+  | "unreadable";
 
 /** Thrown instead of letting an oversized blob hit the server's size cap. */
 class BlobTooLarge extends Error {}
+
+/**
+ * Thrown when the cloud row this device has synced with before comes back as
+ * "no row". PostgREST reports an RLS-filtered row and a genuinely absent row
+ * identically — null, no error — and treating that as "cloud is empty" turns
+ * a broken read policy into a full overwrite of the account's data by
+ * whichever device syncs first. Once a row has been seen, its absence is an
+ * error to surface, never permission to push over it.
+ */
+class CloudReadFailed extends Error {}
+
+const SEEN_KEY = "gym-tracker-cloud-seen";
+
+function cloudSeen(userId: string): boolean {
+  try {
+    return localStorage.getItem(SEEN_KEY) === userId;
+  } catch {
+    return false;
+  }
+}
+
+function markCloudSeen(userId: string): void {
+  try {
+    localStorage.setItem(SEEN_KEY, userId);
+  } catch {
+    // Losing the marker only weakens the guard, never breaks sync.
+  }
+}
 
 async function fetchRemote(userId: string): Promise<AppData | null> {
   const sb = supabase();
@@ -51,6 +80,7 @@ async function pushRemote(userId: string, payload: AppData): Promise<void> {
 
 export function failureState(err: unknown): SyncState {
   if (err instanceof BlobTooLarge) return "too-big";
+  if (err instanceof CloudReadFailed) return "unreadable";
   return navigator.onLine ? "error" : "offline";
 }
 
@@ -66,9 +96,12 @@ async function syncOnce(userId: string): Promise<"pushed" | "pulled" | "noop"> {
   const local = getData();
   const remote = await fetchRemote(userId);
   if (!remote) {
+    if (cloudSeen(userId)) throw new CloudReadFailed();
     await pushRemote(userId, local);
+    markCloudSeen(userId);
     return "pushed";
   }
+  markCloudSeen(userId);
 
   const merged = mergeAppData(local, remote);
   const localChanged = !sameAppData(merged, local);

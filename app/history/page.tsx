@@ -13,11 +13,13 @@ import {
 } from "@/lib/logic";
 import type { AppData, Session } from "@/lib/types";
 import { migrate } from "@/lib/plan";
+import { recordPlan } from "@/lib/planHistory";
 import { blobSize, MAX_IMPORT_BYTES, MAX_SESSIONS } from "@/lib/limits";
 import { ChevronDownIcon, ChevronUpIcon, SettingsIcon, TrashIcon, XIcon } from "@/components/icons";
 import { DayIcon } from "@/components/DayIcons";
 import SyncPanel from "@/components/SyncPanel";
 import RecoverPanel from "@/components/RecoverPanel";
+import PlanHistoryPanel from "@/components/PlanHistoryPanel";
 import StorageWarning from "@/components/StorageWarning";
 
 export default function HistoryPage() {
@@ -222,6 +224,13 @@ function SettingsSheet({ data, onClose }: { data: AppData; onClose: () => void }
         const incoming = clean.sessions.length;
         const current = data.sessions.length;
         if (!confirm(`Replace this device's data (${current} sessions) with the file (${incoming} sessions)?`)) return;
+        // Restoring a backup is an explicit "make this the plan", but the
+        // file carries the stamp from when it was exported — older than
+        // whatever the cloud holds now, so without re-stamping the restored
+        // plan loses the first merge and reverts within seconds.
+        clean.planUpdatedAt = Date.now();
+        // The plan being replaced goes to history before it's overwritten.
+        recordPlan(data);
         localStorage.setItem("gym-tracker-v1", JSON.stringify(clean));
         location.reload();
       } catch {
@@ -250,6 +259,7 @@ function SettingsSheet({ data, onClose }: { data: AppData; onClose: () => void }
         </header>
         <div className="space-y-2">
           <RecoverPanel />
+          <PlanHistoryPanel />
           <SyncPanel />
           <button
             type="button"
