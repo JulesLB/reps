@@ -6,7 +6,6 @@ import { emptyData } from "./seed";
 import { migrate } from "./plan";
 
 const KEY = "gym-tracker-v1";
-const CURRENT_VERSION = 4;
 const STAMP_KEY = "gym-tracker-updated-at";
 const RESCUE_KEY = "gym-tracker-rescue";
 
@@ -40,11 +39,15 @@ function load(): AppData {
     const raw = localStorage.getItem(KEY);
     if (raw) {
       const parsed = JSON.parse(raw) as { version?: number };
-      const stale = parsed.version !== CURRENT_VERSION;
       data = migrate(parsed);
       lastPlanSig = planSignature(data);
       lastActiveSig = activeSignature(data);
-      if (stale) save();
+      // Write back whenever migrate() changed anything, not just on a version
+      // bump. An out-of-range timestamp or a field migrate() stripped would
+      // otherwise sit in storage indefinitely, sanitized on every read but
+      // never actually cleaned. migrate() rebuilds the blob in a fixed key
+      // order, so once written this comparison settles and stops re-saving.
+      if (JSON.stringify(data) !== raw) save();
       return data;
     }
   } catch {
@@ -67,6 +70,17 @@ function requestPersistence(): void {
  * actually changed, so sync can tell a plan edit apart from ordinary session
  * activity (see lib/merge.ts).
  */
+/**
+ * Set when a write to localStorage fails, almost always a full quota. Until it
+ * clears, logged sets live only in memory and are gone on reload, so this has
+ * to reach the UI instead of being swallowed (see components/StorageWarning).
+ */
+let storageBroken = false;
+
+export function storageFailed(): boolean {
+  return storageBroken;
+}
+
 function save(): void {
   if (!data) return;
   try {
@@ -82,8 +96,11 @@ function save(): void {
     }
     localStorage.setItem(KEY, JSON.stringify(data));
     localStorage.setItem(STAMP_KEY, String(Date.now()));
+    storageBroken = false;
   } catch {
-    // storage full or unavailable; keep in-memory state
+    // Storage full or unavailable. In-memory state stands so the workout can
+    // continue, but the user has to know this device is no longer persisting.
+    storageBroken = true;
   }
 }
 
@@ -109,9 +126,7 @@ export function useAppData(): AppData | null {
   return snap;
 }
 
-export function uid(): string {
-  return Math.random().toString(36).slice(2, 10);
-}
+export { uid } from "./id";
 
 /* ---- sync support ------------------------------------------------------ */
 
@@ -126,10 +141,23 @@ export function getData(): AppData {
  * than re-stamping it to now, so a plan edit's real timestamp survives
  * however many devices relay it.
  */
+/** Would adopting `next` drop a session or change the plan that `prev` had? */
+function isLossy(prev: AppData, next: AppData): boolean {
+  const keptIds = new Set(next.sessions.map((s) => s.id));
+  if (prev.sessions.some((s) => !keptIds.has(s.id))) return true;
+  return planSignature(prev) !== planSignature(next);
+}
+
 export function applyMerged(next: AppData): void {
+  // Only keep a rescue copy when the merge actually takes something away. Since
+  // mergeAppData unions sessions by id it almost never does, so stashing on
+  // every pull just doubled this origin's storage for nothing — and storage
+  // running out is itself a silent data-loss path (see save()).
   try {
     const current = localStorage.getItem(KEY);
-    if (current) localStorage.setItem(RESCUE_KEY, current);
+    if (current && data && isLossy(data, next)) {
+      localStorage.setItem(RESCUE_KEY, current);
+    }
   } catch {
     // best effort only
   }

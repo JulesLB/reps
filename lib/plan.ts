@@ -243,8 +243,53 @@ export function migrate(raw: unknown): AppData {
   });
 }
 
-/** Fill in fields added to the v4 schema so an older stored blob loads cleanly. */
+/**
+ * How far ahead of this device's clock a timestamp may sit before it's treated
+ * as junk rather than skew. Generous on purpose: a genuinely mis-set phone
+ * still merges normally, and only absurd values get pulled back.
+ */
+const MAX_CLOCK_SKEW_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * Timestamps decide who wins a merge (lib/merge.ts), so a blob carrying a
+ * far-future stamp wins every comparison from now until that date — every real
+ * edit afterwards is stamped Date.now(), loses, and silently reverts on every
+ * device. Anything beyond the skew window is therefore rewritten to now, and
+ * non-finite or missing values collapse to 0.
+ */
+function boundedStamp(value: unknown): number {
+  const n = typeof value === "number" && Number.isFinite(value) ? value : 0;
+  if (n > Date.now() + MAX_CLOCK_SKEW_MS) return Date.now();
+  return Math.max(0, n);
+}
+
+/**
+ * Fill in fields added to the v4 schema so an older stored blob loads cleanly,
+ * and bound the timestamps sync resolves on. Every untrusted blob reaches state
+ * through migrate(), so this is the one chokepoint covering localStorage, an
+ * imported backup file, and a pulled cloud row alike.
+ */
 function normalize(d: AppData): AppData {
-  if (!Array.isArray(d.discardedActiveIds)) d.discardedActiveIds = [];
-  return d;
+  const sessions = Array.isArray(d.sessions) ? d.sessions : [];
+  for (const s of sessions) {
+    if (s && s.updatedAt != null) s.updatedAt = boundedStamp(s.updatedAt);
+  }
+  const active = d.active ?? null;
+  if (active && active.updatedAt != null) active.updatedAt = boundedStamp(active.updatedAt);
+
+  // Rebuilt field by field rather than passed through, so anything a hand-edited
+  // backup file bolted onto the blob is dropped here instead of being persisted
+  // and pushed to every other device.
+  return {
+    version: 4,
+    exercises: d.exercises ?? {},
+    days: Array.isArray(d.days) ? d.days : [],
+    rotation: Array.isArray(d.rotation) && d.rotation.length ? d.rotation : planRotation(),
+    planStart: typeof d.planStart === "string" ? d.planStart : PLAN_START,
+    planUpdatedAt: boundedStamp(d.planUpdatedAt),
+    sessions,
+    active,
+    discardedActiveIds: Array.isArray(d.discardedActiveIds) ? d.discardedActiveIds : [],
+    settings: { ...defaultSettings(), ...(d.settings ?? {}) },
+  };
 }

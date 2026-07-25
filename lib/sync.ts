@@ -3,9 +3,21 @@
 import type { AppData } from "./types";
 import { applyMerged, getData, onChange } from "./store";
 import { mergeAppData, sameAppData } from "./merge";
+import { migrate } from "./plan";
+import { blobSize, MAX_BLOB_BYTES } from "./limits";
 import { supabase, syncEnabled } from "./supabase";
 
-export type SyncState = "off" | "signed-out" | "idle" | "syncing" | "error" | "offline";
+export type SyncState =
+  | "off"
+  | "signed-out"
+  | "idle"
+  | "syncing"
+  | "error"
+  | "offline"
+  | "too-big";
+
+/** Thrown instead of letting an oversized blob hit the server's size cap. */
+class BlobTooLarge extends Error {}
 
 async function fetchRemote(userId: string): Promise<AppData | null> {
   const sb = supabase();
@@ -16,16 +28,30 @@ async function fetchRemote(userId: string): Promise<AppData | null> {
     .eq("user_id", userId)
     .maybeSingle();
   if (error) throw error;
-  return row ? (row.data as AppData) : null;
+  if (!row) return null;
+  // A cloud row is untrusted input like any other: it can carry whatever a
+  // poisoned import wrote on another device. migrate() bounds the timestamps
+  // the merge below resolves on (lib/plan.ts).
+  return migrate(row.data);
 }
 
 async function pushRemote(userId: string, payload: AppData): Promise<void> {
   const sb = supabase();
   if (!sb) return;
+  // Stop here rather than at the app_data_size_cap CHECK. Past the cap every
+  // upsert fails and the merge only grows the blob, so failing loudly on this
+  // device beats an error state that retrying can never clear.
+  if (blobSize(payload) > MAX_BLOB_BYTES) throw new BlobTooLarge();
   const { error } = await sb
     .from("app_data")
     .upsert({ user_id: userId, data: payload, updated_at: new Date().toISOString() });
-  if (error) throw error;
+  // 23514 is a Postgres check_violation, i.e. the server-side size cap.
+  if (error) throw error.code === "23514" ? new BlobTooLarge() : error;
+}
+
+export function failureState(err: unknown): SyncState {
+  if (err instanceof BlobTooLarge) return "too-big";
+  return navigator.onLine ? "error" : "offline";
 }
 
 /**
@@ -83,9 +109,10 @@ function scheduleSync(userId: string, onState: (s: SyncState) => void): void {
     try {
       await runSync(userId);
       onState("idle");
-    } catch {
-      dirty = true;
-      onState(navigator.onLine ? "error" : "offline");
+    } catch (err) {
+      // An oversized blob will fail identically forever, so don't queue a retry.
+      if (!(err instanceof BlobTooLarge)) dirty = true;
+      onState(failureState(err));
     }
   }, 2500);
 }
@@ -104,8 +131,8 @@ export function startSync(userId: string, onState: (s: SyncState) => void): () =
     try {
       await runSync(userId);
       onState("idle");
-    } catch {
-      onState(navigator.onLine ? "error" : "offline");
+    } catch (err) {
+      onState(failureState(err));
     }
   };
 

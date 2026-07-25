@@ -3,7 +3,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import type { Session } from "@supabase/supabase-js";
 import { supabase, syncEnabled } from "@/lib/supabase";
-import { reconcile, startSync, type SyncState } from "@/lib/sync";
+import { failureState, reconcile, startSync, type SyncState } from "@/lib/sync";
 
 interface SyncContext {
   enabled: boolean;
@@ -57,7 +57,7 @@ export default function SyncProvider({ children }: { children: React.ReactNode }
         );
         setState("idle");
       })
-      .catch(() => setState(navigator.onLine ? "error" : "offline"))
+      .catch((err) => setState(failureState(err)))
       .finally(() => {
         stop = startSync(userId, setState);
       });
@@ -71,8 +71,8 @@ export default function SyncProvider({ children }: { children: React.ReactNode }
     try {
       await reconcile(userId);
       setState("idle");
-    } catch {
-      setState(navigator.onLine ? "error" : "offline");
+    } catch (err) {
+      setState(failureState(err));
     }
   }, [session]);
 

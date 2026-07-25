@@ -7,6 +7,7 @@ import type {
   Session,
   SetLog,
 } from "./types";
+import { uid } from "./id";
 
 export function finishedSessions(data: AppData): Session[] {
   return data.sessions
@@ -271,7 +272,7 @@ export function buildSession(data: AppData, day: DayTemplate, now: number): Sess
         }));
   const index = rotationIndexFor(data, day.id);
   return {
-    id: `s-${now.toString(36)}`,
+    id: uid(),
     dayId: day.id,
     dayName: day.name,
     style: day.style,

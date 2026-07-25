@@ -29,6 +29,7 @@ import CardioCard from "@/components/CardioCard";
 import EditDaySheet from "@/components/EditDaySheet";
 import ExercisePicker from "@/components/ExercisePicker";
 import { DayIcon } from "@/components/DayIcons";
+import StorageWarning from "@/components/StorageWarning";
 import {
   CheckIcon,
   ChevronDownIcon,
@@ -157,6 +158,8 @@ function TrainHome({
           <span className="num text-sm font-semibold">{streak} this week</span>
         </div>
       </header>
+
+      <StorageWarning />
 
       {hero ? (
         <section className="rise rounded-3xl border border-volt/25 bg-gradient-to-b from-surface-2 to-surface p-5">

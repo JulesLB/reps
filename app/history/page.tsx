@@ -12,10 +12,13 @@ import {
   sessionVolume,
 } from "@/lib/logic";
 import type { AppData, Session } from "@/lib/types";
+import { migrate } from "@/lib/plan";
+import { blobSize, MAX_IMPORT_BYTES, MAX_SESSIONS } from "@/lib/limits";
 import { ChevronDownIcon, ChevronUpIcon, SettingsIcon, TrashIcon, XIcon } from "@/components/icons";
 import { DayIcon } from "@/components/DayIcons";
 import SyncPanel from "@/components/SyncPanel";
 import RecoverPanel from "@/components/RecoverPanel";
+import StorageWarning from "@/components/StorageWarning";
 
 export default function HistoryPage() {
   const data = useAppData();
@@ -39,6 +42,8 @@ export default function HistoryPage() {
           <SettingsIcon className="h-5 w-5" />
         </button>
       </header>
+
+      <StorageWarning />
 
       {sessions.length === 0 && (
         <p className="mt-12 text-center text-muted">No sessions yet. Go lift something.</p>
@@ -185,20 +190,39 @@ function SettingsSheet({ data, onClose }: { data: AppData; onClose: () => void }
   const exportJson = () => downloadBackup("reps-export");
 
   // Restores an exported file onto this device. Replaces everything, so it
-  // doubles as "move my history to a new phone".
+  // doubles as "move my history to a new phone". This is the only untrusted
+  // input the app takes, and whatever lands here syncs on to every other
+  // device, so the file is bounded and run through migrate() (which strips
+  // unknown fields and clamps the timestamps the merge resolves on) before it
+  // is ever written.
   const importJson = (file: File) => {
+    if (file.size > MAX_IMPORT_BYTES) {
+      alert(
+        `That file is ${(file.size / 1048576).toFixed(1)} MB. A REPS backup is well under 1 MB, and anything past ${MAX_IMPORT_BYTES / 1048576} MB is too big to sync.`,
+      );
+      return;
+    }
     const reader = new FileReader();
     reader.onload = () => {
       try {
-        const parsed = JSON.parse(String(reader.result)) as AppData;
+        const parsed = JSON.parse(String(reader.result)) as Partial<AppData>;
         if (!parsed || typeof parsed !== "object" || !parsed.exercises || !Array.isArray(parsed.sessions)) {
           alert("That file doesn't look like a REPS export.");
           return;
         }
-        const incoming = parsed.sessions.length;
+        if (parsed.sessions.length > MAX_SESSIONS) {
+          alert(`That file holds ${parsed.sessions.length} sessions, past the ${MAX_SESSIONS} limit.`);
+          return;
+        }
+        const clean = migrate(parsed);
+        if (blobSize(clean) > MAX_IMPORT_BYTES) {
+          alert("That file is too large to sync once restored.");
+          return;
+        }
+        const incoming = clean.sessions.length;
         const current = data.sessions.length;
         if (!confirm(`Replace this device's data (${current} sessions) with the file (${incoming} sessions)?`)) return;
-        localStorage.setItem("gym-tracker-v1", JSON.stringify(parsed));
+        localStorage.setItem("gym-tracker-v1", JSON.stringify(clean));
         location.reload();
       } catch {
         alert("Couldn't read that file.");

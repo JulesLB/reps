@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { supabase } from "@/lib/supabase";
+import { authRedirectTo, supabase } from "@/lib/supabase";
 import { useSync } from "./SyncProvider";
 
 const STATUS: Record<string, { label: string; tone: string }> = {
@@ -11,6 +11,7 @@ const STATUS: Record<string, { label: string; tone: string }> = {
   syncing: { label: "Syncing…", tone: "text-amber" },
   error: { label: "Sync failed", tone: "text-warn" },
   offline: { label: "Offline, will retry", tone: "text-amber" },
+  "too-big": { label: "Too large to sync", tone: "text-warn" },
 };
 
 export default function SyncPanel() {
@@ -31,7 +32,7 @@ export default function SyncPanel() {
     setErr(null);
     const { error } = await sb.auth.signInWithOtp({
       email: email.trim(),
-      options: { emailRedirectTo: window.location.origin },
+      options: { emailRedirectTo: authRedirectTo() },
     });
     setBusy(false);
     if (error) setErr(error.message);
