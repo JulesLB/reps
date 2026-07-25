@@ -34,15 +34,48 @@ if (!review && !health && !profile)
   fail(`nothing to push: none of ${reviewPath}, ${healthPath}, ${profilePath} is readable JSON`);
 
 const AREAS = new Set(["weight", "reps", "sets", "exercise", "sequencing", "volume", "balance", "recovery"]);
+const KINDS = new Set(["add", "remove", "swap", "target", "move", "rename"]);
 
-function validateReview(r) {
+/** A title that wraps to three lines on a phone isn't a title. Enforced, not suggested. */
+const MAX_TITLE = 52;
+const MAX_TLDR = 150;
+
+/**
+ * The change is applied to the plan by a single tap with no second look, so a
+ * bad id here silently edits the wrong day. Everything it names is checked
+ * against the live blob before the review is allowed near the cloud.
+ */
+function validateChange(c, blob, where) {
+  if (!KINDS.has(c.kind)) fail(`${where}: change.kind "${c.kind}" not in ${[...KINDS].join(", ")}`);
+  const day = (blob.days ?? []).find((d) => d.id === c.dayId);
+  if (!day) fail(`${where}: change.dayId "${c.dayId}" is not a day in the plan`);
+  if (c.kind === "rename") {
+    if (!c.name?.trim()) fail(`${where}: a rename change needs a name`);
+    return;
+  }
+  if (!blob.exercises?.[c.exerciseId])
+    fail(`${where}: change.exerciseId "${c.exerciseId}" is not in the exercise list`);
+  if (c.kind === "swap" && !blob.exercises?.[c.replacesId])
+    fail(`${where}: change.replacesId "${c.replacesId}" is not in the exercise list`);
+  if (c.kind === "swap" && !day.entries.some((e) => e.exerciseId === c.replacesId))
+    fail(`${where}: swap target "${c.replacesId}" is not in ${day.name}`);
+}
+
+function validateReview(r, blob) {
   if (!r.headline || !r.summary) fail("review needs headline and summary");
   if (!Array.isArray(r.recommendations) || !r.recommendations.length)
     fail("review needs a recommendations array");
+  if (r.tldr != null && (!Array.isArray(r.tldr) || r.tldr.some((t) => typeof t !== "string")))
+    fail("review.tldr must be an array of strings");
   for (const rec of r.recommendations) {
     if (!rec.title || !rec.detail) fail(`recommendation missing title/detail: ${JSON.stringify(rec)}`);
+    if (rec.title.length > MAX_TITLE)
+      fail(`title is ${rec.title.length} chars, max ${MAX_TITLE}: "${rec.title}"`);
+    if (rec.tldr && rec.tldr.length > MAX_TLDR)
+      fail(`tldr is ${rec.tldr.length} chars, max ${MAX_TLDR}: "${rec.tldr}"`);
     if (!AREAS.has(rec.area)) fail(`recommendation area "${rec.area}" not in ${[...AREAS].join(", ")}`);
     if (![1, 2, 3].includes(rec.priority)) fail(`recommendation priority must be 1, 2 or 3`);
+    if (rec.change) validateChange(rec.change, blob, `rec "${rec.id ?? rec.title}"`);
     rec.id ??= `${rec.area}-${Math.random().toString(36).slice(2, 8)}`;
   }
   r.id ??= `review-${new Date().toISOString().slice(0, 10)}`;
@@ -79,7 +112,7 @@ const { userId, blob } = await fetchSoleRow(env);
 const now = Date.now();
 
 if (review) {
-  const v = validateReview(review);
+  const v = validateReview(review, blob);
   const kept = (blob.coach?.reviews ?? []).filter((r) => r.id !== v.id);
   kept.push(v);
   kept.sort((a, b) => a.generatedAt - b.generatedAt);

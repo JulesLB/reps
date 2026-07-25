@@ -61,7 +61,7 @@ Window: since the previous review's `periodTo`, or the last 6 weeks if this is t
 
 **Don't prescribe around an unconfirmed injury.** Where a constraint is self-diagnosed, say what changes depending on the real answer and recommend getting it confirmed. Never write a rehab protocol for something nobody has examined, and never contradict a clinician he's actually seeing.
 
-4-8 recommendations, ranked. Specificity bar: exercise name, current number, target number, which day. If a recommendation has no number in it, rewrite it until it does.
+4-8 distinct findings, ranked. One finding may split into several recommendations when it needs several separate plan edits (adding two exercises to a day is two entries) — that's fine, but don't pad the count with things that aren't really findings. Specificity bar: exercise name, current number, target number, which day. If a recommendation has no number in it, rewrite it until it does.
 
 ### 4. Write the review
 
@@ -72,24 +72,53 @@ Window: since the previous review's `periodTo`, or the last 6 weeks if this is t
   "id": "review-2026-07-25",
   "periodFrom": "2026-06-15",
   "periodTo": "2026-07-25",
-  "headline": "One-line verdict",
+  "headline": "One line. The single most important number.",
+  "tldr": ["3-5 bullets, one line each, the whole review at a glance."],
   "summary": "2-4 sentence assessment of the window.",
   "recommendations": [
     {
       "id": "legs-volume",
       "area": "volume",
       "priority": 1,
-      "title": "Short imperative",
-      "detail": "The what, the why, the numbers.",
+      "title": "Short imperative, max 52 chars",
+      "tldr": "One sentence carrying the number, max 150 chars.",
+      "detail": "The full reasoning. As long as it needs to be.",
       "dayId": "legs-a",
-      "exerciseId": "leg-press"
+      "exerciseId": "leg-press",
+      "change": { "kind": "add", "dayId": "legs-a", "exerciseId": "hip-thrust", "sets": 3, "reps": 10 }
     }
   ],
-  "watch": ["Optional: things to monitor, not act on."]
+  "watch": ["Things to monitor, not act on. First sentence stands alone — the rest is hidden behind a tap."]
 }
 ```
 
 `area` ∈ weight | reps | sets | exercise | sequencing | volume | balance | recovery. `priority` 1-3 (1 = first). `dayId`/`exerciseId` must be real ids from the blob; omit when not applicable. Omit `generatedAt` (the push script stamps it).
+
+**Write for a phone.** The Coach tab shows `headline` + `tldr` bullets first, then only the priority-1 cards; everything else is behind "Show N more", and every `detail` is behind a "Why" tap. So:
+- `title` is a short imperative and the push script **rejects anything over 52 characters**. "Add Hip Thrust to Legs B", not "Glutes got zero sets, which is the single biggest reason your legs read 99.6%".
+- `tldr` on a recommendation is the one sentence that has to land on its own, with the number in it. Max 150 characters, also enforced.
+- `detail` is where the education goes. Don't shorten it — it's opt-in, so length costs nothing.
+- `review.tldr` is the whole review in 3-5 lines. Someone who reads only that should know what to change and why.
+- First sentence of each `watch` item stands alone; the rest is collapsed.
+
+**Emit a `change` wherever the app can do the edit itself.** That turns advice into one tap and is the main reason a recommendation gets acted on. Kinds:
+
+| kind | fields | does |
+|---|---|---|
+| `add` | `dayId`, `exerciseId`, `sets`, `reps` | appends the exercise to the day |
+| `remove` | `dayId`, `exerciseId` | drops it from the day |
+| `swap` | `dayId`, `exerciseId`, `replacesId`, `sets`, `reps` | puts the new exercise in the old one's slot |
+| `target` | `dayId`, `exerciseId`, `sets`, `reps` | rewrites the set/rep targets |
+| `move` | `dayId`, `exerciseId`, `position` | moves it to a zero-based position |
+| `rename` | `dayId`, `name` | renames the day |
+
+Rules that matter:
+- The push script validates every id against the live blob and refuses the whole push on a miss. That's the safety net, not the plan — check the ids yourself.
+- Only put a `change` on a recommendation the change fully carries out. The plan stores sets and reps, **not weight**, so "add 2.5 kg" is not applicable; if a rec is mostly about load, either omit the change or say in the `detail` which part the tap does.
+- One change per recommendation. Two edits to the same day means two recommendations.
+- Order them so the changes apply cleanly top to bottom: renames before anything referencing the day, removals before the reorder that assumes them.
+- The app derives "already applied" by comparing against the plan, so a change that describes the current state renders as done. Never emit one that's already true.
+- Recommendations with no automatable change (get a diagnosis, fix a muscle-group label) simply omit `change`, and that's normal.
 
 ### 5. Push and confirm
 

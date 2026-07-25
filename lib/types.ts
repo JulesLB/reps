@@ -182,15 +182,45 @@ export type CoachArea =
   | "balance"
   | "recovery";
 
+/**
+ * A recommendation the app can carry out on its own, so acting on the review is
+ * one tap instead of a trip through the plan editor. Deliberately narrow: only
+ * changes to a day's exercise list and its set/rep targets, which is where most
+ * coaching advice actually lands.
+ */
+export type PlanChangeKind = "add" | "remove" | "swap" | "target" | "move" | "rename";
+
+export interface PlanChange {
+  kind: PlanChangeKind;
+  /** Day template the change applies to. */
+  dayId: string;
+  /** The exercise added, removed, moved, or retargeted. Absent on "rename". */
+  exerciseId?: string;
+  /** "swap" only: the exercise `exerciseId` takes the place of. */
+  replacesId?: string;
+  /** "add", "swap" and "target": the targets to write. */
+  sets?: number;
+  reps?: number;
+  /** "move" only: zero-based position in the day's entry list. */
+  position?: number;
+  /** "rename" only: the day's new name. */
+  name?: string;
+}
+
 export interface CoachRec {
   id: string;
   area: CoachArea;
   /** 1 = do this first, 3 = nice to have. */
   priority: 1 | 2 | 3;
+  /** Short imperative, kept to a phone-friendly line. */
   title: string;
+  /** One sentence carrying the number. Shown collapsed; `detail` is behind an expander. */
+  tldr?: string;
   detail: string;
   dayId?: string;
   exerciseId?: string;
+  /** Present when the app can apply this itself. */
+  change?: PlanChange;
 }
 
 export interface CoachReview {
@@ -200,6 +230,8 @@ export interface CoachReview {
   periodFrom: string;
   periodTo: string;
   headline: string;
+  /** 2-4 bullets, one line each. The whole review at a glance. */
+  tldr?: string[];
   summary: string;
   recommendations: CoachRec[];
   /** Things to keep an eye on rather than act on now. */
