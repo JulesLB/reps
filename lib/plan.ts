@@ -7,6 +7,7 @@ import type {
   HealthData,
   MuscleGroup,
   PlanEntry,
+  ProfileData,
   Settings,
 } from "./types";
 
@@ -223,21 +224,31 @@ export function isStockPlan(d: Pick<AppData, "days" | "rotation" | "planStart">)
  */
 export function migrate(raw: unknown): AppData {
   const d = raw as Partial<AppData> & {
-    version?: number;
     days?: unknown;
     schedule?: (string | null)[];
   };
-  // v5 added activities/health/coach; normalize() fills them in when missing,
-  // so v4 blobs need no dedicated step.
-  if (d.version === 5 || d.version === 4) return normalize(d as AppData);
+  // Read through a plain number so the checks below compare against what's
+  // actually in the blob, not the literal type the current build declares.
+  const version: number = typeof d.version === "number" ? d.version : 0;
 
-  if (d.version === 3) {
+  // v5 added activities/health/coach and v6 added profile; normalize() fills
+  // every one of them in when missing, so v4 and v5 blobs need no dedicated step.
+  //
+  // The `>=` matters as much as the equality. A blob stamped *newer* than this
+  // build used to fall through to the v1 rebuild path below and come back as a
+  // stock plan with the new slices stripped — which is exactly how a phone
+  // still running the v4 bundle wiped a pushed coach review on 2026-07-25.
+  // Keeping what we understand and dropping only what we don't is always the
+  // safer failure: an old client now degrades instead of destroying.
+  if (version >= 4) return normalize(d as AppData);
+
+  if (version === 3) {
     const next = d as unknown as AppData;
     next.planUpdatedAt = 0;
     return normalize(next);
   }
 
-  if (d.version === 2) {
+  if (version === 2) {
     const fromSchedule = (d.schedule ?? []).filter((x): x is string => Boolean(x));
     const next = d as unknown as AppData;
     next.rotation = fromSchedule.length ? fromSchedule : planRotation();
@@ -280,7 +291,7 @@ export function migrate(raw: unknown): AppData {
   );
 
   return normalize({
-    version: 5,
+    version: 6,
     exercises,
     days: [...planDays, ...kept],
     rotation: planRotation(),
@@ -293,6 +304,7 @@ export function migrate(raw: unknown): AppData {
     activities: [],
     health: emptyHealth(),
     coach: emptyCoach(),
+    profile: emptyProfile(),
   });
 }
 
@@ -304,12 +316,20 @@ export function emptyCoach(): CoachState {
   return { reviews: [], updatedAt: 0 };
 }
 
+export function emptyProfile(): ProfileData {
+  return { goal: "", constraints: [], updatedAt: 0 };
+}
+
 /**
  * How far ahead of this device's clock a timestamp may sit before it's treated
  * as junk rather than skew. Generous on purpose: a genuinely mis-set phone
  * still merges normally, and only absurd values get pulled back.
  */
 const MAX_CLOCK_SKEW_MS = 24 * 60 * 60 * 1000;
+
+/** Generous for a one-line note, far short of anything that would bloat a push. */
+const MAX_PROFILE_LINE = 400;
+const MAX_PROFILE_CONSTRAINTS = 30;
 
 /**
  * Timestamps decide who wins a merge (lib/merge.ts), so a blob carrying a
@@ -354,11 +374,24 @@ function normalize(d: AppData): AppData {
     updatedAt: boundedStamp(rawCoach.updatedAt),
   };
 
+  // Free text typed by hand and synced, so it gets the same treatment as any
+  // other untrusted field: coerced to string, trimmed, and bounded in both
+  // line length and count so a pasted wall of text can't bloat every push.
+  const rawProfile = (d.profile ?? {}) as Partial<ProfileData>;
+  const profile: ProfileData = {
+    goal: typeof rawProfile.goal === "string" ? rawProfile.goal.slice(0, MAX_PROFILE_LINE) : "",
+    constraints: (Array.isArray(rawProfile.constraints) ? rawProfile.constraints : [])
+      .filter((c): c is string => typeof c === "string" && c.trim().length > 0)
+      .map((c) => c.trim().slice(0, MAX_PROFILE_LINE))
+      .slice(0, MAX_PROFILE_CONSTRAINTS),
+    updatedAt: boundedStamp(rawProfile.updatedAt),
+  };
+
   // Rebuilt field by field rather than passed through, so anything a hand-edited
   // backup file bolted onto the blob is dropped here instead of being persisted
   // and pushed to every other device.
   return {
-    version: 5,
+    version: 6,
     exercises: d.exercises ?? {},
     days: Array.isArray(d.days) ? d.days : [],
     rotation: Array.isArray(d.rotation) && d.rotation.length ? d.rotation : planRotation(),
@@ -371,5 +404,6 @@ function normalize(d: AppData): AppData {
     activities,
     health,
     coach,
+    profile,
   };
 }

@@ -158,6 +158,20 @@ export interface HealthData {
   updatedAt: number;
 }
 
+/**
+ * Standing context the coach has to respect on every review: what the training
+ * is for, and the injuries/limits that rule certain advice out. Lives in the
+ * blob rather than in the skill file so it syncs to the phone, survives a
+ * reinstall, and can be edited from the Coach tab the moment something changes.
+ */
+export interface ProfileData {
+  /** The goal in Jules's own words, e.g. "hold weight, grow legs". */
+  goal: string;
+  /** One line each: injuries, hard limits, anything that constrains the plan. */
+  constraints: string[];
+  updatedAt: number;
+}
+
 export type CoachArea =
   | "weight"
   | "reps"
@@ -202,7 +216,7 @@ export interface CoachState {
 }
 
 export interface AppData {
-  version: 5;
+  version: 6;
   exercises: Record<string, Exercise>;
   days: DayTemplate[];
   /** Ordered training cycle of day ids; a day may appear more than once. */
@@ -230,4 +244,5 @@ export interface AppData {
   activities: Activity[];
   health: HealthData;
   coach: CoachState;
+  profile: ProfileData;
 }

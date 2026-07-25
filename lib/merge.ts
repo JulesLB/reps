@@ -52,9 +52,11 @@ function mergeActivities(a: Activity[], b: Activity[]): Activity[] {
 }
 
 /**
- * Wholesale last-writer-wins for single-writer slices (health and coach are
- * only ever written by the laptop pipeline). An updatedAt tie with different
- * content falls back to a content comparison so the pick stays commutative.
+ * Wholesale last-writer-wins for slices small enough that a field-level merge
+ * would buy nothing: health and coach are only ever written by the laptop
+ * pipeline, and profile is a handful of lines edited one device at a time. An
+ * updatedAt tie with different content falls back to a content comparison so
+ * the pick stays commutative.
  */
 function pickNewest<T extends { updatedAt: number }>(a: T, b: T): T {
   const at = a?.updatedAt ?? 0;
@@ -97,7 +99,7 @@ export function mergeAppData(local: AppData, remote: AppData): AppData {
   const active = picked && cleared.has(picked.id) ? null : picked;
 
   return {
-    version: 5,
+    version: 6,
     exercises: planWins.exercises,
     days: planWins.days,
     rotation: planWins.rotation,
@@ -110,6 +112,7 @@ export function mergeAppData(local: AppData, remote: AppData): AppData {
     activities: mergeActivities(local.activities, remote.activities),
     health: pickNewest(local.health, remote.health),
     coach: pickNewest(local.coach, remote.coach),
+    profile: pickNewest(local.profile, remote.profile),
   };
 }
 

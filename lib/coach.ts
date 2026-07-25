@@ -53,3 +53,30 @@ export function latestStepWeek(d: AppData) {
   if (!w.length) return null;
   return w.reduce((best, x) => (x.weekStart > best.weekStart ? x : best), w[0]);
 }
+
+/* ---- profile ----------------------------------------------------------- */
+
+export function setGoal(goal: string): void {
+  update((d) => {
+    d.profile.goal = goal.trim();
+    d.profile.updatedAt = Date.now();
+  });
+}
+
+export function addConstraint(text: string): void {
+  const line = text.trim();
+  if (!line) return;
+  update((d) => {
+    if (d.profile.constraints.includes(line)) return;
+    d.profile.constraints.push(line);
+    d.profile.updatedAt = Date.now();
+  });
+}
+
+export function removeConstraint(index: number): void {
+  update((d) => {
+    if (index < 0 || index >= d.profile.constraints.length) return;
+    d.profile.constraints.splice(index, 1);
+    d.profile.updatedAt = Date.now();
+  });
+}

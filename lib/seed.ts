@@ -4,6 +4,7 @@ import {
   defaultSettings,
   emptyCoach,
   emptyHealth,
+  emptyProfile,
   planRotation,
   PLAN_START,
 } from "./plan";
@@ -34,7 +35,7 @@ export function emptyData(): AppData {
   const exercises: Record<string, Exercise> = {};
   for (const [id, name, muscle] of EXERCISES) exercises[id] = { id, name, muscle };
   return {
-    version: 5,
+    version: 6,
     exercises,
     days: buildPlanDays(exercises),
     rotation: planRotation(),
@@ -47,5 +48,6 @@ export function emptyData(): AppData {
     activities: [],
     health: emptyHealth(),
     coach: emptyCoach(),
+    profile: emptyProfile(),
   };
 }

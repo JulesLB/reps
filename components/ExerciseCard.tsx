@@ -87,8 +87,13 @@ export default function ExerciseCard({ data, log, dayId, onMutate, onSetDone, on
   };
 
   // Only ever drops a work set, so the warm-up can't trap the last row,
-  // and never empties the exercise down to nothing.
+  // and never empties the exercise down to nothing. A logged set asks first —
+  // dropping below the plan is normal (short on time, tendon complaining), but
+  // silently binning reps you actually did is not.
   const removeLastSet = () => {
+    const lastWork = [...log.sets].reverse().find((s) => !s.warmup);
+    if (lastWork?.done && !confirm(`Remove the last set? ${formatWeight(lastWork.weight)}×${lastWork.reps} was logged.`))
+      return;
     onMutate((l) => {
       const work = l.sets.filter((s) => !s.warmup);
       if (work.length <= 1) return;
@@ -227,8 +232,10 @@ export default function ExerciseCard({ data, log, dayId, onMutate, onSetDone, on
             <PlusIcon className="h-4 w-4" /> Warm-up
           </button>
         )}
-        {/* Only an undo for sets added beyond the plan, so the normal footer stays two buttons. */}
-        {workCount > target.sets && workCount > 1 && (
+        {/* Available whenever more than one work set is left. It used to appear
+            only above the plan's set count, which made the template a floor:
+            cutting a 3-set exercise to 2 mid-session was impossible. */}
+        {workCount > 1 && (
           <button
             type="button"
             onClick={removeLastSet}

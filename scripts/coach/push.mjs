@@ -17,6 +17,7 @@ function argPath(flag, fallback) {
 }
 const reviewPath = argPath("--review", join(WORK_DIR, "review.json"));
 const healthPath = argPath("--health", join(WORK_DIR, "health.json"));
+const profilePath = argPath("--profile", join(WORK_DIR, "profile.json"));
 
 function tryRead(path) {
   try {
@@ -28,7 +29,9 @@ function tryRead(path) {
 
 const review = tryRead(reviewPath);
 const health = tryRead(healthPath);
-if (!review && !health) fail(`nothing to push: neither ${reviewPath} nor ${healthPath} is readable JSON`);
+const profile = tryRead(profilePath);
+if (!review && !health && !profile)
+  fail(`nothing to push: none of ${reviewPath}, ${healthPath}, ${profilePath} is readable JSON`);
 
 const AREAS = new Set(["weight", "reps", "sets", "exercise", "sequencing", "volume", "balance", "recovery"]);
 
@@ -55,6 +58,22 @@ function validateHealth(h) {
   return h;
 }
 
+/**
+ * The app owns this slice — it's edited from the Coach tab. The pipeline only
+ * writes it to seed a constraint learned in conversation, so it merges into
+ * whatever is already there rather than replacing it, and never drops a line
+ * Jules added on his phone.
+ */
+function mergeProfile(existing, incoming) {
+  if (typeof incoming.goal !== "string" || !Array.isArray(incoming.constraints))
+    fail("profile needs a goal string and a constraints array");
+  const constraints = [...(existing?.constraints ?? [])];
+  for (const c of incoming.constraints) {
+    if (typeof c === "string" && c.trim() && !constraints.includes(c.trim())) constraints.push(c.trim());
+  }
+  return { goal: incoming.goal.trim() || (existing?.goal ?? ""), constraints };
+}
+
 const env = loadEnv();
 const { userId, blob } = await fetchSoleRow(env);
 const now = Date.now();
@@ -71,7 +90,13 @@ if (health) {
   blob.health = { ...validateHealth(health), updatedAt: now };
 }
 
+if (profile) {
+  blob.profile = { ...mergeProfile(blob.profile, profile), updatedAt: now };
+}
+
 await pushBlob(env, userId, blob);
 console.log(
-  `pushed${review ? ` review "${review.headline}"` : ""}${health ? ` + health (${health.inbody.length} scans, ${health.stepsWeekly.length} step weeks)` : ""}`
+  `pushed${review ? ` review "${review.headline}"` : ""}` +
+    `${health ? ` + health (${health.inbody.length} scans, ${health.stepsWeekly.length} step weeks)` : ""}` +
+    `${profile ? ` + profile (${blob.profile.constraints.length} constraints)` : ""}`
 );
