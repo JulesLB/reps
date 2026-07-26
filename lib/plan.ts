@@ -303,7 +303,7 @@ export function migrate(raw: unknown): AppData {
   );
 
   return normalize({
-    version: 6,
+    version: 7,
     exercises,
     days: [...planDays, ...kept],
     rotation: planRotation(),
@@ -403,7 +403,7 @@ function normalize(d: AppData): AppData {
   // backup file bolted onto the blob is dropped here instead of being persisted
   // and pushed to every other device.
   return {
-    version: 6,
+    version: 7,
     exercises: d.exercises ?? {},
     days: Array.isArray(d.days) ? d.days : [],
     rotation: Array.isArray(d.rotation) && d.rotation.length ? d.rotation : planRotation(),

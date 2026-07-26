@@ -35,7 +35,7 @@ export function emptyData(): AppData {
   const exercises: Record<string, Exercise> = {};
   for (const [id, name, muscle] of EXERCISES) exercises[id] = { id, name, muscle };
   return {
-    version: 6,
+    version: 7,
     exercises,
     days: buildPlanDays(exercises),
     rotation: planRotation(),

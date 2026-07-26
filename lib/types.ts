@@ -251,13 +251,18 @@ export interface CoachState {
  * The schema version this build reads and writes. Sync compares it against the
  * raw version in a cloud blob before merging: a blob from the future means this
  * client is out of date, and an out-of-date client must never write — every
- * data-loss incident so far (2026-07-25, three times) was an old cached bundle
- * mangling a newer blob and pushing the wreckage.
+ * data-loss incident so far (three on 2026-07-25, one on 2026-07-26) was an old
+ * cached bundle mangling a newer blob and pushing the wreckage.
+ *
+ * v7 changes nothing in the shape. It exists so the database-side version
+ * floor (supabase-setup.sql) locks out every bundle shipped before the
+ * server-side guard: their writes carry version <= 6 and are rejected at the
+ * row, which is the one place a stale cached client can't dodge.
  */
-export const CURRENT_VERSION = 6;
+export const CURRENT_VERSION = 7;
 
 export interface AppData {
-  version: 6;
+  version: 7;
   exercises: Record<string, Exercise>;
   days: DayTemplate[];
   /** Ordered training cycle of day ids; a day may appear more than once. */

@@ -99,7 +99,7 @@ export function mergeAppData(local: AppData, remote: AppData): AppData {
   const active = picked && cleared.has(picked.id) ? null : picked;
 
   return {
-    version: 6,
+    version: 7,
     exercises: planWins.exercises,
     days: planWins.days,
     rotation: planWins.rotation,

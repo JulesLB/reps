@@ -29,6 +29,28 @@ drop policy if exists "own row update" on app_data;
 create policy "own row update" on app_data
   for update using ((select auth.uid()) = user_id) with check ((select auth.uid()) = user_id);
 
+-- A blob's schema version may never go backwards. Every wipe so far came from
+-- a stale cached client whose old migrate() rebuilt a newer blob into a stock
+-- plan and pushed it — and a bundle already cached on a phone can't be patched
+-- by any code fix. Old bundles all write version <= their own schema, so
+-- rejecting downgrades at the row blocks the whole class, including bundles
+-- that predate every client-side guard. Applies to the service role too.
+create or replace function reject_stale_blob() returns trigger as $$
+declare
+  old_v int := coalesce((old.data->>'version')::int, 0);
+  new_v int := coalesce((new.data->>'version')::int, 0);
+begin
+  if new_v < old_v then
+    raise exception 'stale client write rejected: blob version % is older than stored version %', new_v, old_v;
+  end if;
+  return new;
+end;
+$$ language plpgsql;
+
+drop trigger if exists app_data_reject_stale on app_data;
+create trigger app_data_reject_stale before update on app_data
+  for each row execute function reject_stale_blob();
+
 -- Keep updated_at honest so last-write-wins can be reasoned about.
 create or replace function touch_app_data() returns trigger as $$
 begin
