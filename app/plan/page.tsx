@@ -136,9 +136,10 @@ function Phases({ data }: { data: AppData }) {
 
   const applyCycle = (phase: ProgramPhase) => {
     if (!phase.rotation?.length) return;
-    if (!confirm(`Switch your cycle to the ${phase.name} phase? Your session types are not changed, only the order you rotate through them.`)) return;
+    if (!confirm(`Load the ${phase.name} cycle into your Hyrox plan? Your gym plan and its cycle are not touched.`)) return;
     update((d) => {
-      d.rotation = phase.rotation!.map((s) => ({ ...s }));
+      d.hyroxRotation = phase.rotation!.map((s) => ({ ...s }));
+      d.activeTrack = "hyrox";
     });
   };
 
@@ -147,6 +148,10 @@ function Phases({ data }: { data: AppData }) {
       <h2 className="display mb-2 px-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-faint">
         Phases
       </h2>
+      <p className="mb-2 px-1 text-[11px] text-faint">
+        A phase&apos;s cycle loads into the Hyrox plan on the Train tab. Your gym plan keeps its
+        own cycle.
+      </p>
       <div className="space-y-1.5">
         {phases.map((phase, i) => {
           const isCurrent = i === currentIdx;
@@ -154,7 +159,7 @@ function Phases({ data }: { data: AppData }) {
           const isOpen = open === phase.id;
           const cycleActive =
             !!phase.rotation?.length &&
-            JSON.stringify(phase.rotation) === JSON.stringify(data.rotation);
+            JSON.stringify(phase.rotation) === JSON.stringify(data.hyroxRotation);
           return (
             <div
               key={phase.id}
@@ -209,7 +214,7 @@ function Phases({ data }: { data: AppData }) {
                     cycleActive ? (
                       <p className="mt-3 flex items-center gap-2 text-sm text-muted">
                         <CheckIcon className="h-4 w-4 text-info" strokeWidth={2.6} /> This is your
-                        current cycle.
+                        Hyrox cycle.
                       </p>
                     ) : (
                       <button

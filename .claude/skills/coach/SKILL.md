@@ -22,9 +22,9 @@ node scripts/coach/pull.mjs
 Writes `Documents/coach/blob.json` (the full app state) and prints a summary. If it fails on a missing `SUPABASE_SERVICE_ROLE_KEY`, stop and ask Jules to add it to `.env.local`.
 
 The blob schema is `lib/types.ts` (`AppData`). What matters:
-- `sessions[]` — logged workouts. Each has `dayId`, `date`, `track?` ("hyrox" or absent = gym), `logs[]` with `sets[] {weight, reps, done, warmup?}` and/or `cardio {minutes, level, done, distanceKm?}`. Only count sets with `done: true` and not `warmup`. A cardio block with `distanceKm` gives pace (minutes/km).
-- `days[]` + `rotation[]` — the plan as designed. Rotation entries are `{dayId, withPrev?}`; `withPrev` marks an AM/PM pair (one calendar day). Compare design vs execution.
-- `program` — `{name, events[], phases[]}`. Each phase has `from`, `focus`, `week[]` and usually its own `rotation`. The active phase is the last one whose `from` is not in the future.
+- `sessions[]` — logged workouts. Each has `dayId`, `date`, `track?` ("hyrox" or absent = gym), `plan?` (which plan's cycle it advanced), `logs[]` with `sets[] {weight, reps, done, warmup?}` and/or `cardio {minutes, level, done, distanceKm?}`. Only count sets with `done: true` and not `warmup`. A cardio block with `distanceKm` gives pace (minutes/km). On a cardio-muscle exercise with set logs and no `cardio` block, the sets are erg intervals: `reps` holds meters per effort, `weight` is 0.
+- `days[]` + two cycles — `rotation[]` is the gym plan's cycle, `hyroxRotation[]` the Hyrox plan's, `activeTrack` says which one the Train tab is on. Entries are `{dayId, withPrev?}`; `withPrev` marks an AM/PM pair (one calendar day). Each plan advances independently off its own sessions (`plan` field). Day entries may carry `distanceM` (carry/sled meters per set); a cardio entry with `sets >= 2` is an interval prescription (`reps` = meters).
+- `program` — `{name, events[], phases[]}`. Each phase has `from`, `focus`, `week[]` and usually its own `rotation`. Applying a phase writes `hyroxRotation` only; the gym cycle is never touched. The active phase is the last one whose `from` is not in the future.
 - `exercises` — id → name + muscle group.
 - `activities[]` — in-app hikes/walks/runs (skip `deleted: true`).
 - `health.inbody[]`, `health.stepsWeekly[]` — what you pushed last time.

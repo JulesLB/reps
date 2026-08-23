@@ -37,8 +37,10 @@ export default function PlanHistoryPanel() {
     if (!confirm(`Restore this plan from ${when(snap.at)}?\n\n${names}\n\nYour logged sessions are not touched.`)) return;
     update((d) => {
       d.days = snap.days;
-      // Snapshots taken before v8 store plain day-id strings.
+      // Snapshots taken before v8 store plain day-id strings, and ones taken
+      // before the two-plan split have no hyroxRotation at all.
       d.rotation = asRotation(snap.rotation);
+      d.hyroxRotation = asRotation(snap.hyroxRotation ?? []);
       d.planStart = snap.planStart;
       // Union, snapshot winning conflicts: sessions logged since still resolve
       // their exercise ids, and the snapshot's names come back as they were.

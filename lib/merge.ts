@@ -103,6 +103,8 @@ export function mergeAppData(local: AppData, remote: AppData): AppData {
     exercises: planWins.exercises,
     days: planWins.days,
     rotation: planWins.rotation,
+    hyroxRotation: planWins.hyroxRotation,
+    activeTrack: planWins.activeTrack,
     planStart: planWins.planStart,
     settings: planWins.settings,
     planUpdatedAt: planWins.planUpdatedAt,

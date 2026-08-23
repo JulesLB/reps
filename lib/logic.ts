@@ -4,8 +4,10 @@ import type {
   DayTemplate,
   ExerciseLog,
   PlanEntry,
+  RotationStep,
   Session,
   SetLog,
+  Track,
 } from "./types";
 import { uid } from "./id";
 
@@ -32,6 +34,16 @@ export function planWeek(data: AppData, now: number = Date.now()): number {
   return Math.max(1, diff + 1);
 }
 
+/** The cycle of whichever plan the Train tab is on: gym or Hyrox. */
+export function activeRotation(data: AppData): RotationStep[] {
+  return data.activeTrack === "hyrox" ? (data.hyroxRotation ?? []) : (data.rotation ?? []);
+}
+
+/** Which plan's cycle a session advanced; sessions from before the split read as gym. */
+export function sessionPlan(s: Session): Track {
+  return s.plan === "hyrox" ? "hyrox" : "gym";
+}
+
 export interface RotationItem {
   day: DayTemplate;
   index: number;
@@ -39,9 +51,9 @@ export interface RotationItem {
   withPrev: boolean;
 }
 
-/** The rotation resolved to real templates, in cycle order. */
+/** The active plan's rotation resolved to real templates, in cycle order. */
 export function rotationDays(data: AppData): RotationItem[] {
-  return (data.rotation ?? [])
+  return activeRotation(data)
     .map((step, index) => {
       const day = data.days.find((d) => d.id === step.dayId);
       return day ? { day, index, withPrev: step.withPrev === true && index > 0 } : null;
@@ -63,21 +75,30 @@ export function rotationGroups(data: AppData): RotationItem[][] {
   return groups;
 }
 
-/** Day types that exist but sit outside the cycle (a one-off cardio day, say). */
+/**
+ * Day types of the active plan's track that sit in neither cycle. Days living
+ * in the other plan's rotation are hidden entirely: starting one means
+ * switching plans first, so it advances the right cycle.
+ */
 export function extraDays(data: AppData): DayTemplate[] {
-  const inCycle = new Set((data.rotation ?? []).map((s) => s.dayId));
-  return data.days.filter((d) => !inCycle.has(d.id));
+  const inCycle = new Set(
+    [...(data.rotation ?? []), ...(data.hyroxRotation ?? [])].map((s) => s.dayId)
+  );
+  return data.days.filter(
+    (d) => !inCycle.has(d.id) && (d.track ?? "gym") === data.activeTrack
+  );
 }
 
 /**
- * Where the cycle stands. Position comes from the last finished session's own
- * recorded slot, so a day appearing twice in the cycle (Pull) advances correctly
- * rather than always resolving to its first occurrence.
+ * Where the active plan's cycle stands. Position comes from the last finished
+ * session of THIS plan (each plan advances independently), using that
+ * session's own recorded slot so a day appearing twice in the cycle (Pull)
+ * advances correctly rather than always resolving to its first occurrence.
  */
 export function nextRotationIndex(data: AppData): number {
-  const rot = data.rotation ?? [];
+  const rot = activeRotation(data);
   if (!rot.length) return 0;
-  const last = finishedSessions(data)[0];
+  const last = finishedSessions(data).find((s) => sessionPlan(s) === data.activeTrack);
   if (!last) return 0;
   const li =
     typeof last.rotationIndex === "number" && last.rotationIndex < rot.length
@@ -92,10 +113,12 @@ export interface Suggestion {
   index: number;
 }
 
-/** What to train next: simply the next step in the cycle. */
+/** What to train next: simply the next step in the active plan's cycle. */
 export function suggestNextDay(data: AppData): Suggestion | null {
-  const rot = data.rotation ?? [];
-  if (!rot.length) return data.days[0] ? { day: data.days[0], index: 0 } : null;
+  const rot = activeRotation(data);
+  // An empty Hyrox cycle is a real state (no phase loaded yet); the home
+  // screen renders its own pointer to the Plan tab instead of a suggestion.
+  if (!rot.length) return null;
   const index = nextRotationIndex(data);
   const day = data.days.find((d) => d.id === rot[index]?.dayId);
   return day ? { day, index } : null;
@@ -107,7 +130,7 @@ export function suggestNextDay(data: AppData): Suggestion | null {
  * from Legs A rather than restarting it.
  */
 export function rotationIndexFor(data: AppData, dayId: string): number | undefined {
-  const rot = data.rotation ?? [];
+  const rot = activeRotation(data);
   if (!rot.some((s) => s.dayId === dayId)) return undefined;
   const start = nextRotationIndex(data);
   for (let i = 0; i < rot.length; i++) {
@@ -292,24 +315,50 @@ export function entryIsCardio(data: AppData, day: DayTemplate, exerciseId: strin
   return ex.muscle === "cardio";
 }
 
+/**
+ * A cardio entry with 2+ sets logs as intervals — erg repeats with the rest
+ * timer, `reps` carrying meters per interval — instead of one steady
+ * minutes+km block. Decided from the entry so the same exercise can be a
+ * steady row one day and 5×500 m the next.
+ */
+export function entryIsInterval(data: AppData, day: DayTemplate, entry: PlanEntry): boolean {
+  return entryIsCardio(data, day, entry.exerciseId) && entry.sets >= 2;
+}
+
+/** A logged interval-cardio exercise: set-based sets on a cardio exercise, meters in `reps`. */
+export function isIntervalLog(data: AppData, log: ExerciseLog): boolean {
+  return !log.cardio && data.exercises[log.exerciseId]?.muscle === "cardio";
+}
+
 export function buildSession(data: AppData, day: DayTemplate, now: number): Session {
   const entries = visibleEntries(data, day, now).filter((e) => data.exercises[e.exerciseId]);
-  const logs: ExerciseLog[] = entries.map((e) =>
-    entryIsCardio(data, day, e.exerciseId)
-      ? {
-          exerciseId: e.exerciseId,
-          sets: [],
-          cardio: prefillCardio(data, e.exerciseId),
-          ...(e.note ? { note: e.note } : {}),
-        }
-      : {
-          exerciseId: e.exerciseId,
-          sets: prefillSets(data, e.exerciseId, { sets: e.sets, reps: e.reps }, day.id),
-          targetSets: e.sets,
-          targetReps: e.reps,
-          ...(e.note ? { note: e.note } : {}),
-        }
-  );
+  const logs: ExerciseLog[] = entries.map((e) => {
+    if (entryIsInterval(data, day, e)) {
+      return {
+        exerciseId: e.exerciseId,
+        sets: Array.from({ length: e.sets }, () => ({ weight: 0, reps: e.reps, done: false })),
+        targetSets: e.sets,
+        targetReps: e.reps,
+        ...(e.note ? { note: e.note } : {}),
+      };
+    }
+    if (entryIsCardio(data, day, e.exerciseId)) {
+      return {
+        exerciseId: e.exerciseId,
+        sets: [],
+        cardio: prefillCardio(data, e.exerciseId),
+        ...(e.note ? { note: e.note } : {}),
+      };
+    }
+    return {
+      exerciseId: e.exerciseId,
+      sets: prefillSets(data, e.exerciseId, { sets: e.sets, reps: e.reps }, day.id),
+      targetSets: e.sets,
+      targetReps: e.reps,
+      ...(e.distanceM ? { targetDistanceM: e.distanceM } : {}),
+      ...(e.note ? { note: e.note } : {}),
+    };
+  });
   const index = rotationIndexFor(data, day.id);
   return {
     id: uid(),
@@ -317,7 +366,7 @@ export function buildSession(data: AppData, day: DayTemplate, now: number): Sess
     dayName: day.name,
     style: day.style,
     ...(day.track ? { track: day.track } : {}),
-    ...(index === undefined ? {} : { rotationIndex: index }),
+    ...(index === undefined ? {} : { rotationIndex: index, plan: data.activeTrack }),
     date: new Date(now).toISOString(),
     startedAt: now,
     logs,
@@ -361,6 +410,14 @@ export function sessionCardioMinutes(session: Session): number {
 
 export function sessionDistanceKm(session: Session): number {
   return session.logs.reduce((sum, log) => sum + (log.cardio?.done ? (log.cardio.distanceKm ?? 0) : 0), 0);
+}
+
+/** Meters logged across interval-cardio sets (erg repeats), summed for the summary line. */
+export function sessionErgMeters(data: AppData, session: Session): number {
+  return session.logs.reduce((sum, log) => {
+    if (log.cardio || data.exercises[log.exerciseId]?.muscle !== "cardio") return sum;
+    return sum + log.sets.reduce((s, set) => (set.done ? s + set.reps : s), 0);
+  }, 0);
 }
 
 /** Which track a session belongs to; sessions from before tracks read as gym. */

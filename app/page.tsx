@@ -1,8 +1,10 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { uid, update, useAppData } from "@/lib/store";
 import {
+  activeRotation,
   buildSession,
   entryVisible,
   finishedSessions,
@@ -11,6 +13,7 @@ import {
   formatSeconds,
   extraDays,
   formatWeight,
+  isIntervalLog,
   logTarget,
   personalRecords,
   planWeek,
@@ -20,14 +23,16 @@ import {
   rotationGroups,
   sessionCardioMinutes,
   sessionDistanceKm,
+  sessionErgMeters,
   sessionSetCounts,
   sessionVolume,
   suggestNextDay,
   type RotationItem,
 } from "@/lib/logic";
-import type { AppData, DayStyle, DayTemplate, Session, Track } from "@/lib/types";
+import type { AppData, DayStyle, DayTemplate, RotationStep, Session, Track } from "@/lib/types";
 import ExerciseCard from "@/components/ExerciseCard";
 import CardioCard from "@/components/CardioCard";
+import IntervalCard from "@/components/IntervalCard";
 import EditDaySheet from "@/components/EditDaySheet";
 import ExercisePicker from "@/components/ExercisePicker";
 import HikeSheet from "@/components/HikeLog";
@@ -117,6 +122,11 @@ function startSession(data: AppData, day: DayTemplate) {
   });
 }
 
+/** The rotation the Train tab is editing: the active plan's, inside an update(). */
+function planRot(d: AppData): RotationStep[] {
+  return d.activeTrack === "hyrox" ? d.hyroxRotation : d.rotation;
+}
+
 function TrainHome({
   data,
   onEdit,
@@ -132,6 +142,14 @@ function TrainHome({
   const others = extraDays(data);
   const sessions = finishedSessions(data);
   const streak = weekSessionCount(data);
+  const stepCount = activeRotation(data).length;
+  const onHyrox = data.activeTrack === "hyrox";
+  // The switcher only appears once anything Hyrox exists; a pure gym install never sees it.
+  const showPlanSwitch =
+    onHyrox ||
+    data.hyroxRotation.length > 0 ||
+    data.program.phases.length > 0 ||
+    data.days.some((d) => d.track === "hyrox");
   const trainedToday =
     sessions[0] && new Date(sessions[0].startedAt).toDateString() === new Date().toDateString();
 
@@ -154,15 +172,16 @@ function TrainHome({
   // changes which session happens where, never the AM/PM structure itself.
   const moveInCycle = (index: number, dir: -1 | 1) => {
     update((d) => {
+      const rot = planRot(d);
       const j = index + dir;
-      if (j < 0 || j >= d.rotation.length) return;
-      [d.rotation[index].dayId, d.rotation[j].dayId] = [d.rotation[j].dayId, d.rotation[index].dayId];
+      if (j < 0 || j >= rot.length) return;
+      [rot[index].dayId, rot[j].dayId] = [rot[j].dayId, rot[index].dayId];
     });
   };
 
   const togglePair = (index: number) => {
     update((d) => {
-      const step = d.rotation[index];
+      const step = planRot(d)[index];
       if (!step || index === 0) return;
       if (step.withPrev) delete step.withPrev;
       else step.withPrev = true;
@@ -182,6 +201,31 @@ function TrainHome({
       </header>
 
       <StorageWarning />
+
+      {showPlanSwitch && (
+        <div className="mb-4 flex rounded-2xl border border-line bg-surface p-1">
+          {(["gym", "hyrox"] as Track[]).map((t) => {
+            const active = data.activeTrack === t;
+            return (
+              <button
+                key={t}
+                type="button"
+                aria-pressed={active}
+                onClick={() => update((d) => { d.activeTrack = t; })}
+                className={`display h-10 flex-1 rounded-xl text-sm font-bold uppercase tracking-wide transition-colors duration-150 ${
+                  active
+                    ? t === "hyrox"
+                      ? "bg-info/15 text-info"
+                      : "bg-volt/15 text-volt"
+                    : "text-muted"
+                }`}
+              >
+                {t === "gym" ? "Gym" : "Hyrox"}
+              </button>
+            );
+          })}
+        </div>
+      )}
 
       {hero ? (
         <section className="rise rounded-3xl border border-volt/25 bg-gradient-to-b from-surface-2 to-surface p-5">
@@ -251,6 +295,22 @@ function TrainHome({
             Start {hero.name}
           </button>
         </section>
+      ) : onHyrox && stepCount === 0 ? (
+        <section className="rise rounded-3xl border border-info/25 bg-gradient-to-b from-surface-2 to-surface p-5">
+          <p className="display text-xs font-semibold uppercase tracking-[0.18em] text-info">Hyrox plan</p>
+          <h2 className="display mt-1 text-3xl font-bold uppercase leading-none tracking-wide">
+            No cycle loaded
+          </h2>
+          <p className="mt-2 text-sm text-muted">
+            Load a phase&apos;s cycle from the Plan tab. Your gym plan keeps its own cycle either way.
+          </p>
+          <Link
+            href="/plan"
+            className="mt-4 flex h-13 w-full items-center justify-center rounded-2xl border border-info/50 bg-info/10 font-bold uppercase tracking-wide text-info transition-transform duration-150 active:scale-[0.98]"
+          >
+            Open the plan
+          </Link>
+        </section>
       ) : (
         <section className="rise rounded-3xl border border-line-soft bg-surface p-5">
           <h2 className="display text-3xl font-bold uppercase leading-none tracking-wide text-muted">
@@ -260,9 +320,10 @@ function TrainHome({
         </section>
       )}
 
+      {stepCount > 0 && (
       <section className="mt-5">
         <h2 className="display mb-2 px-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-faint">
-          Your cycle
+          Your cycle{showPlanSwitch ? (onHyrox ? " · Hyrox plan" : " · Gym plan") : ""}
         </h2>
         <p className="mb-2 px-1 text-[11px] text-faint">
           Tap <LinkIcon className="inline h-3 w-3" /> to pair a session with the one above it: same
@@ -277,7 +338,7 @@ function TrainHome({
                 item={group[0]}
                 slot={null}
                 isNext={group[0].index === suggestion?.index}
-                stepCount={data.rotation.length}
+                stepCount={stepCount}
                 lastDone={lastDone}
                 onMove={moveInCycle}
                 onTogglePair={togglePair}
@@ -302,7 +363,7 @@ function TrainHome({
                     item={item}
                     slot={slot}
                     isNext={item.index === suggestion?.index}
-                    stepCount={data.rotation.length}
+                    stepCount={stepCount}
                     lastDone={lastDone}
                     onMove={moveInCycle}
                     onTogglePair={togglePair}
@@ -314,6 +375,7 @@ function TrainHome({
           )}
         </div>
       </section>
+      )}
 
       {others.length > 0 && (
         <section className="mt-5">
@@ -341,7 +403,7 @@ function TrainHome({
                 <button
                   type="button"
                   aria-label={`Add ${day.name} to the cycle`}
-                  onClick={() => update((d) => { d.rotation.push({ dayId: day.id }); })}
+                  onClick={() => update((d) => { planRot(d).push({ dayId: day.id }); })}
                   className="flex h-10 w-8 shrink-0 items-center justify-center rounded-lg text-faint transition-colors duration-150 hover:text-volt"
                 >
                   <PlusIcon className="h-4 w-4" />
@@ -785,6 +847,24 @@ function ActiveSession({ data, onFinished }: { data: AppData; onFinished: (s: Se
                 })
               }
             />
+          ) : isIntervalLog(data, log) ? (
+            <IntervalCard
+              key={log.exerciseId + i}
+              data={data}
+              log={log}
+              onSetDone={startRest}
+              onMutate={(fn) =>
+                update((d) => {
+                  const target = d.active?.logs[i];
+                  if (target) fn(target);
+                })
+              }
+              onDelete={() =>
+                update((d) => {
+                  if (d.active) d.active.logs.splice(i, 1);
+                })
+              }
+            />
           ) : (
             <ExerciseCard
               key={log.exerciseId + i}
@@ -915,6 +995,7 @@ function SessionSummary({ data, session, onClose }: { data: AppData; session: Se
   const volume = sessionVolume(session);
   const cardioMin = sessionCardioMinutes(session);
   const distanceKm = sessionDistanceKm(session);
+  const ergMeters = sessionErgMeters(data, session);
   const prs = useMemo(() => personalRecords(data, session), [data, session]);
   const duration = session.finishedAt ? formatDuration(session.finishedAt - session.startedAt) : "—";
   const [templateSaved, setTemplateSaved] = useState(false);
@@ -975,9 +1056,11 @@ function SessionSummary({ data, session, onClose }: { data: AppData; session: Se
       <div className="mt-6 grid grid-cols-3 gap-2">
         <Stat label="Duration" value={duration} />
         <Stat label={volume === 0 && cardioMin > 0 ? "Blocks" : "Sets"} value={String(done)} />
-        {volume === 0 && cardioMin > 0 ? (
+        {volume === 0 && (cardioMin > 0 || ergMeters > 0) ? (
           distanceKm > 0 ? (
             <Stat label="Distance" value={`${formatWeight(Math.round(distanceKm * 10) / 10)} km`} />
+          ) : ergMeters > 0 ? (
+            <Stat label="Ergs" value={`${formatWeight(Math.round(ergMeters / 100) / 10)} km`} />
           ) : (
             <Stat label="Cardio" value={`${cardioMin} min`} />
           )

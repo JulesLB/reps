@@ -234,13 +234,16 @@ let stockDaysSig: string | null = null;
  * 2026-07-25 and reverted every template rename on every device). A false
  * negative here is safe — it just falls back to the timestamp rule.
  */
-export function isStockPlan(d: Pick<AppData, "days" | "rotation" | "planStart">): boolean {
+export function isStockPlan(
+  d: Pick<AppData, "days" | "rotation" | "planStart"> & { hyroxRotation?: RotationStep[] }
+): boolean {
   if (stockDaysSig === null) stockDaysSig = daysFingerprint(buildPlanDays({}));
   // Rotations are compared through asRotation so a pre-v8 stock blob (plain
   // string ids) and a v8 stock blob (steps) both read as stock.
   return (
     d.planStart === PLAN_START &&
     JSON.stringify(asRotation(d.rotation)) === JSON.stringify(planRotation()) &&
+    asRotation(d.hyroxRotation ?? []).length === 0 &&
     daysFingerprint(d.days) === stockDaysSig
   );
 }
@@ -336,6 +339,8 @@ export function migrate(raw: unknown): AppData {
     exercises,
     days: [...planDays, ...kept],
     rotation: planRotation(),
+    hyroxRotation: [],
+    activeTrack: "gym",
     planStart: PLAN_START,
     planUpdatedAt: 0,
     sessions,
@@ -436,6 +441,7 @@ function normalize(d: AppData): AppData {
   const program = normalizeProgram(d.program);
 
   const rotation = asRotation(d.rotation);
+  const hyroxRotation = asRotation(d.hyroxRotation);
 
   // Rebuilt field by field rather than passed through, so anything a hand-edited
   // backup file bolted onto the blob is dropped here instead of being persisted
@@ -445,6 +451,9 @@ function normalize(d: AppData): AppData {
     exercises: d.exercises ?? {},
     days: Array.isArray(d.days) ? d.days : [],
     rotation: rotation.length ? rotation : planRotation(),
+    // Deliberately allowed to stay empty: no Hyrox cycle loaded is a real state.
+    hyroxRotation,
+    activeTrack: d.activeTrack === "hyrox" ? "hyrox" : "gym",
     planStart: typeof d.planStart === "string" ? d.planStart : PLAN_START,
     planUpdatedAt: boundedStamp(d.planUpdatedAt),
     sessions,

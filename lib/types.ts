@@ -32,8 +32,15 @@ export type Track = "gym" | "hyrox";
 
 export interface PlanEntry {
   exerciseId: string;
+  /**
+   * For a cardio-group exercise, 1 set means a steady block logged as minutes
+   * + km, while 2+ sets means intervals: set-based logging with the rest
+   * timer, where `reps` carries meters per interval (erg repeats).
+   */
   sets: number;
   reps: number;
+  /** Carry/sled distance per set in meters, shown next to the rep target. */
+  distanceM?: number;
   /** Coaching cue shown on the exercise card ("control the eccentric"). */
   note?: string;
   /** Ramp-up gate: the exercise only appears from this plan week onward. */
@@ -80,10 +87,16 @@ export interface CardioLog {
 
 export interface ExerciseLog {
   exerciseId: string;
+  /**
+   * On a cardio-group exercise (and no `cardio` block) these are interval
+   * sets: `reps` holds meters per interval and `weight` stays 0.
+   */
   sets: SetLog[];
   /** Snapshot of the day's plan targets when the session was built. */
   targetSets?: number;
   targetReps?: number;
+  /** Snapshot of the entry's carry/sled distance per set, in meters. */
+  targetDistanceM?: number;
   note?: string;
   cardio?: CardioLog;
 }
@@ -95,7 +108,13 @@ export interface Session {
   style?: DayStyle;
   /** Snapshot of the day's track when the session was built; absent = gym. */
   track?: Track;
-  /** Position in the rotation this session occupied, so the cycle survives duplicates. */
+  /**
+   * Which plan's cycle this session advanced (absent = gym). Distinct from
+   * `track`: the Hyrox plan contains gym-track lifting days, so a session's
+   * own track can't say which of the two cycles it moved forward.
+   */
+  plan?: Track;
+  /** Position in that plan's rotation, so the cycle survives duplicates. */
   rotationIndex?: number;
   date: string;
   startedAt: number;
@@ -214,15 +233,15 @@ export interface ProgramPhase {
   focus: string;
   /** Bullet lines describing the weekly shape, rendered as-is. */
   week: string[];
-  /** The cycle to run during this phase; applied to `rotation` with one tap. */
+  /** The cycle to run during this phase; applied to `hyroxRotation` with one tap. */
   rotation?: RotationStep[];
 }
 
 /**
  * A long-arc training program: the events being trained for and the phases
  * on the way, each carrying its own cycle. Written by the coach pipeline,
- * rendered in the Plan tab; the app itself only ever switches `rotation` to
- * a phase's cycle, it never edits the program. Last writer wins wholesale in
+ * rendered in the Plan tab; the app itself only ever loads a phase's cycle
+ * into `hyroxRotation`, it never edits the program. Last writer wins wholesale in
  * the merge, like health and coach.
  */
 export interface ProgramData {
@@ -321,10 +340,12 @@ export interface CoachState {
  * server-side guard: their writes carry version <= 6 and are rejected at the
  * row, which is the one place a stale cached client can't dodge.
  *
- * v8 (Hyrox prep): rotation becomes RotationStep[] (AM/PM pairing), day
- * templates and sessions carry a track, cardio logs carry a distance, and a
- * program slice holds the phase plan. The rotation shape change is why the
- * bump is mandatory: a v7 bundle treats rotation entries as strings.
+ * v8 (Hyrox prep): rotation becomes RotationStep[] (AM/PM pairing), a second
+ * rotation carries the Hyrox plan's cycle with activeTrack switching between
+ * the two, day templates and sessions carry a track, cardio logs carry a
+ * distance, and a program slice holds the phase plan. The rotation shape
+ * change is why the bump is mandatory: a v7 bundle treats rotation entries
+ * as strings.
  */
 export const CURRENT_VERSION = 8;
 
@@ -332,8 +353,15 @@ export interface AppData {
   version: 8;
   exercises: Record<string, Exercise>;
   days: DayTemplate[];
-  /** Ordered training cycle; a day may appear more than once. */
+  /** The gym plan's ordered cycle; a day may appear more than once. */
   rotation: RotationStep[];
+  /**
+   * The Hyrox plan's cycle, kept separate so loading a program phase never
+   * overwrites the gym rotation. Empty until a phase's cycle is applied.
+   */
+  hyroxRotation: RotationStep[];
+  /** Which plan the Train tab shows and advances. */
+  activeTrack: Track;
   /** ISO date of the start of plan week 1; drives rehab gates. */
   planStart: string;
   /**

@@ -22,6 +22,8 @@ function planSignature(d: AppData): string {
     exercises: d.exercises,
     days: d.days,
     rotation: d.rotation,
+    hyroxRotation: d.hyroxRotation,
+    activeTrack: d.activeTrack,
     planStart: d.planStart,
     settings: d.settings,
   });

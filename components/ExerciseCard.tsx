@@ -126,6 +126,11 @@ export default function ExerciseCard({ data, log, dayId, onMutate, onSetDone, on
             <span className="rounded-full border border-line px-2 py-0.5 text-[11px] font-medium uppercase tracking-wide text-muted">
               {MUSCLE_LABEL[exercise.muscle]}
             </span>
+            {log.targetDistanceM && (
+              <span className="num rounded-full border border-line px-2 py-0.5 text-[11px] font-medium text-muted">
+                {log.targetDistanceM} m / set
+              </span>
+            )}
             <button
               type="button"
               aria-label={`Rest ${formatSeconds(rest)}, tap to change`}

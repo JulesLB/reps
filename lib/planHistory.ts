@@ -12,6 +12,8 @@ export interface PlanSnapshot {
   days: DayTemplate[];
   /** Steps on v8+ snapshots; plain day-id strings on ones taken before. */
   rotation: RotationStep[] | string[];
+  /** Absent on snapshots taken before the two-plan split. */
+  hyroxRotation?: RotationStep[];
   planStart: string;
   exercises: Record<string, Exercise>;
   settings: Settings;
@@ -21,13 +23,14 @@ const HISTORY_KEY = "gym-tracker-plan-history";
 const MAX_SNAPSHOTS = 10;
 
 function sliceSig(s: Omit<PlanSnapshot, "at">): string {
-  return JSON.stringify([s.days, s.rotation, s.planStart, s.exercises, s.settings]);
+  return JSON.stringify([s.days, s.rotation, s.hyroxRotation ?? [], s.planStart, s.exercises, s.settings]);
 }
 
 export function planSlice(d: AppData): Omit<PlanSnapshot, "at"> {
   return {
     days: d.days,
     rotation: d.rotation,
+    hyroxRotation: d.hyroxRotation,
     planStart: d.planStart,
     exercises: d.exercises,
     settings: d.settings,

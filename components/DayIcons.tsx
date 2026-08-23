@@ -74,12 +74,59 @@ export function CardioDayIcon(props: IconProps) {
   );
 }
 
+/** A runner mid-stride, so a run day stops borrowing the bike glyph. */
+export function RunDayIcon(props: IconProps) {
+  return (
+    <svg {...base(props)}>
+      <circle cx="14.2" cy="4.4" r="1.7" />
+      <path d="M13.4 7.4 11.4 12.6" />
+      <path d="m13.2 8.1 3.3 1.7 2.9-.9" />
+      <path d="M13.4 8.3 9.7 9.2 7.9 12" />
+      <path d="m11.4 12.6 3.3 2.4-.7 5.4" />
+      <path d="M11.4 12.6 8.4 16.2l-3.6.9" />
+    </svg>
+  );
+}
+
+/** A rower on the erg: seat, rail, handle pull. Covers rowing and SkiErg days. */
+export function ErgDayIcon(props: IconProps) {
+  return (
+    <svg {...base(props)}>
+      <path d="M3 19.5h18" />
+      <path d="M5 16.5h14" />
+      <path d="M10 16.5v-1.6h3v1.6" />
+      <circle cx="15.9" cy="7.8" r="1.6" />
+      <path d="M15.2 9.8 12.2 13" />
+      <path d="m13.4 11.4 4.8-1.2" />
+      <path d="M12.2 13l-3.6.4-2-2.6" />
+    </svg>
+  );
+}
+
+/** A kettlebell for station work: wall balls, sleds, carries. */
+export function StationsDayIcon(props: IconProps) {
+  return (
+    <svg {...base(props)}>
+      <path d="M9.7 8.9 8.9 5.8a1.3 1.3 0 0 1 1.3-1.6h3.6a1.3 1.3 0 0 1 1.3 1.6l-.8 3.1" />
+      <circle cx="12" cy="14" r="5.4" />
+    </svg>
+  );
+}
+
 export function DayIcon({ dayName, className, strokeWidth }: IconProps & { dayName: string }) {
   const n = dayName.toLowerCase();
-  if (n.includes("push")) return <PushDayIcon className={className} strokeWidth={strokeWidth} />;
-  if (n.includes("pull")) return <PullDayIcon className={className} strokeWidth={strokeWidth} />;
+  if (n.includes("push") && !n.includes("sled"))
+    return <PushDayIcon className={className} strokeWidth={strokeWidth} />;
+  if (n.includes("pull") && !n.includes("sled"))
+    return <PullDayIcon className={className} strokeWidth={strokeWidth} />;
   if (n.includes("leg")) return <LegsDayIcon className={className} strokeWidth={strokeWidth} />;
-  if (n.includes("cardio") || n.includes("bike") || n.includes("run"))
+  if (/run|tempo|interval|sprint|trail/.test(n))
+    return <RunDayIcon className={className} strokeWidth={strokeWidth} />;
+  if (/erg|row|ski|engine/.test(n))
+    return <ErgDayIcon className={className} strokeWidth={strokeWidth} />;
+  if (/station|hybrid|sim|hyrox|race/.test(n))
+    return <StationsDayIcon className={className} strokeWidth={strokeWidth} />;
+  if (n.includes("cardio") || n.includes("bike"))
     return <CardioDayIcon className={className} strokeWidth={strokeWidth} />;
   return (
     <svg {...base({ className, strokeWidth })}>

@@ -68,9 +68,14 @@ export default function EditDaySheet({ data, dayId, onClose, onSwitchDay }: Edit
     update((d) => {
       d.days = d.days.filter((x) => x.id !== dayId);
       // Dropping steps can orphan a `withPrev` on what follows; re-normalize.
-      const kept = (d.rotation ?? []).filter((s) => s.dayId !== dayId);
-      if (kept[0]?.withPrev) delete kept[0].withPrev;
-      d.rotation = kept;
+      // The day may sit in either plan's cycle, so both are cleaned.
+      const without = (rot: typeof d.rotation) => {
+        const kept = (rot ?? []).filter((s) => s.dayId !== dayId);
+        if (kept[0]?.withPrev) delete kept[0].withPrev;
+        return kept;
+      };
+      d.rotation = without(d.rotation);
+      d.hyroxRotation = without(d.hyroxRotation);
     });
     onClose();
   };
@@ -191,8 +196,31 @@ export default function EditDaySheet({ data, dayId, onClose, onSwitchDay }: Edit
                     <XIcon className="h-4 w-4" />
                   </button>
                 </div>
-                {!entryIsCardio(data, day, entry.exerciseId) && (
-                  <div className="mt-1 flex items-center gap-4 pl-10">
+                {entryIsCardio(data, day, entry.exerciseId) ? (
+                  <div className="mt-1 pl-10">
+                    <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
+                      <TargetStepper
+                        label="Sets"
+                        value={entry.sets}
+                        min={1}
+                        onChange={(v) => mutateDay((t) => { t.entries[i].sets = v; })}
+                      />
+                      {entry.sets >= 2 && (
+                        <TargetStepper
+                          label="m / set"
+                          value={entry.reps}
+                          min={50}
+                          step={50}
+                          onChange={(v) => mutateDay((t) => { t.entries[i].reps = v; })}
+                        />
+                      )}
+                    </div>
+                    <p className="mt-1 text-[10px] text-faint">
+                      1 set logs minutes + km · 2+ sets logs intervals with the rest timer
+                    </p>
+                  </div>
+                ) : (
+                  <div className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-1 pl-10">
                     <TargetStepper
                       label="Sets"
                       value={entry.sets}
@@ -205,6 +233,29 @@ export default function EditDaySheet({ data, dayId, onClose, onSwitchDay }: Edit
                       min={1}
                       onChange={(v) => mutateDay((t) => { t.entries[i].reps = v; })}
                     />
+                    {entry.distanceM != null ? (
+                      <TargetStepper
+                        label="m"
+                        value={entry.distanceM}
+                        min={0}
+                        step={5}
+                        onChange={(v) =>
+                          mutateDay((t) => {
+                            if (v > 0) t.entries[i].distanceM = v;
+                            else delete t.entries[i].distanceM;
+                          })
+                        }
+                      />
+                    ) : (
+                      <button
+                        type="button"
+                        aria-label={`Add a distance per set to ${ex.name}`}
+                        onClick={() => mutateDay((t) => { t.entries[i].distanceM = 20; })}
+                        className="h-8 rounded-lg border border-dashed border-line px-2 text-[11px] font-semibold text-faint transition-colors duration-150 hover:text-ink"
+                      >
+                        + m
+                      </button>
+                    )}
                   </div>
                 )}
               </div>
@@ -265,11 +316,13 @@ function TargetStepper({
   label,
   value,
   min,
+  step = 1,
   onChange,
 }: {
   label: string;
   value: number;
   min: number;
+  step?: number;
   onChange: (v: number) => void;
 }) {
   return (
@@ -278,16 +331,16 @@ function TargetStepper({
       <button
         type="button"
         aria-label={`Decrease ${label}`}
-        onClick={() => onChange(Math.max(min, value - 1))}
+        onClick={() => onChange(Math.max(min, value - step))}
         className="flex h-8 w-8 items-center justify-center rounded-lg border border-line bg-surface-2 text-muted active:bg-line"
       >
         <MinusIcon className="h-3.5 w-3.5" />
       </button>
-      <span className="num display w-6 text-center text-sm font-bold">{value}</span>
+      <span className={`num display text-center text-sm font-bold ${step > 1 ? "w-9" : "w-6"}`}>{value}</span>
       <button
         type="button"
         aria-label={`Increase ${label}`}
-        onClick={() => onChange(value + 1)}
+        onClick={() => onChange(value + step)}
         className="flex h-8 w-8 items-center justify-center rounded-lg border border-line bg-surface-2 text-muted active:bg-line"
       >
         <PlusIcon className="h-3.5 w-3.5" />

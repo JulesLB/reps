@@ -156,7 +156,9 @@ function SessionCard({
   const detail =
     volume === 0 && cardioMin > 0
       ? `${cardioMin} min cardio`
-      : `${done} sets · ${formatWeight(Math.round(volume))} kg`;
+      : volume === 0 && done > 0
+        ? `${done} sets`
+        : `${done} sets · ${formatWeight(Math.round(volume))} kg`;
 
   const del = () => {
     if (!confirm(`Delete this ${session.dayName} session from ${dateLabel}? This can't be undone.`)) return;
@@ -224,13 +226,15 @@ function SessionCard({
               }
               const sets = log.sets.filter((s) => s.done);
               if (!sets.length) return null;
+              // Interval-cardio sets (ergs) carry meters in `reps`, no weight.
+              const isInterval = !log.cardio && ex?.muscle === "cardio";
               return (
                 <li key={log.exerciseId}>
                   <p className="truncate text-sm">{name}</p>
                   <p className="num mt-0.5 flex flex-wrap gap-x-2.5 gap-y-0.5 text-xs">
                     {sets.map((s, i) => (
                       <span key={i} className={s.warmup ? "text-amber/70" : "text-muted"}>
-                        {formatWeight(s.weight)}×{s.reps}
+                        {isInterval ? `${s.reps} m` : `${formatWeight(s.weight)}×${s.reps}`}
                       </span>
                     ))}
                   </p>

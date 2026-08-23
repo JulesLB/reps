@@ -8,10 +8,13 @@
 //
 // --program  ProgramData JSON (default Documents/coach/program.json)
 // --plan     optional plan additions (default Documents/coach/plan-days.json):
-//            { exercises?: [[id, name, muscle]...], days?: DayTemplate[],
+//            { exercises?: [[id, name, muscle, rest?]...], days?: DayTemplate[],
 //              rotation?: RotationStep[] }
-//            Exercises are added only when missing; days upsert by id; the
-//            rotation, when present, replaces the current cycle.
+//            Exercises are added only when missing (a rest override in the
+//            tuple also fills in on an existing exercise that has none); days
+//            upsert by id; the rotation, when present, replaces the GYM
+//            cycle — phase cycles reach the Hyrox plan through the program,
+//            never through this field.
 // --dry      apply everything to a local blob file and write the result to
 //            the given path instead of pushing. For testing a build before
 //            it ships.
@@ -65,11 +68,15 @@ function validateProgram(p, knownDayIds) {
 
 function applyPlan(blob, plan) {
   const summary = [];
-  for (const [id, name, muscle] of plan.exercises ?? []) {
+  for (const [id, name, muscle, rest] of plan.exercises ?? []) {
     if (!id || !name || !muscle) fail(`plan exercise needs [id, name, muscle]: ${JSON.stringify([id, name, muscle])}`);
     if (!blob.exercises[id]) {
-      blob.exercises[id] = { id, name, muscle };
+      blob.exercises[id] = { id, name, muscle, ...(rest > 0 ? { rest } : {}) };
       summary.push(`+exercise ${name}`);
+    } else if (rest > 0 && !blob.exercises[id].rest) {
+      // Fill a missing rest override, but never clobber one the user set.
+      blob.exercises[id].rest = rest;
+      summary.push(`~rest ${name} ${rest}s`);
     }
   }
   for (const day of plan.days ?? []) {
@@ -77,6 +84,7 @@ function applyPlan(blob, plan) {
     for (const e of day.entries) {
       if (!blob.exercises[e.exerciseId]) fail(`day "${day.id}": exercise "${e.exerciseId}" does not exist`);
       if (!(e.sets > 0) || !(e.reps > 0)) fail(`day "${day.id}": entry ${e.exerciseId} needs sets and reps`);
+      if (e.distanceM != null && !(e.distanceM > 0)) fail(`day "${day.id}": entry ${e.exerciseId} has a bad distanceM`);
     }
     const clean = {
       id: day.id,

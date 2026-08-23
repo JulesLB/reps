@@ -40,6 +40,8 @@ export function emptyData(): AppData {
     exercises,
     days: buildPlanDays(exercises),
     rotation: planRotation(),
+    hyroxRotation: [],
+    activeTrack: "gym",
     planStart: PLAN_START,
     planUpdatedAt: 0,
     sessions: [],
