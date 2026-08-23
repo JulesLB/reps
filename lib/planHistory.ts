@@ -1,4 +1,4 @@
-import type { AppData, DayTemplate, Exercise, Settings } from "./types";
+import type { AppData, DayTemplate, Exercise, RotationStep, Settings } from "./types";
 
 /**
  * A rolling local archive of plan states. One overwritable rescue slot proved
@@ -10,7 +10,8 @@ import type { AppData, DayTemplate, Exercise, Settings } from "./types";
 export interface PlanSnapshot {
   at: number;
   days: DayTemplate[];
-  rotation: string[];
+  /** Steps on v8+ snapshots; plain day-id strings on ones taken before. */
+  rotation: RotationStep[] | string[];
   planStart: string;
   exercises: Record<string, Exercise>;
   settings: Settings;

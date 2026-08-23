@@ -22,6 +22,14 @@ export interface Exercise {
 
 export type DayStyle = "strength" | "cardio";
 
+/**
+ * Which program a session type belongs to. Tracks keep two very different
+ * kinds of training legible in one app: "gym" is the strength work, "hyrox"
+ * is race prep (runs, ergs, stations). Absent means "gym" — every pre-v8
+ * template predates tracks and they are all strength work.
+ */
+export type Track = "gym" | "hyrox";
+
 export interface PlanEntry {
   exerciseId: string;
   sets: number;
@@ -36,9 +44,23 @@ export interface DayTemplate {
   id: string;
   name: string;
   style: DayStyle;
+  /** Absent = "gym". See Track. */
+  track?: Track;
   entries: PlanEntry[];
   /** Mirror of entries, kept so a device still on the v1 build doesn't crash on a synced blob. */
   exerciseIds: string[];
+}
+
+/**
+ * One step in the training cycle. `withPrev` marks this step as the same
+ * calendar day as the step before it (a morning lift plus an evening run),
+ * so the Train home can show both as one card while the cycle itself stays
+ * a flat sequence — advancement, rotationIndex and progression all keep
+ * working on plain positions.
+ */
+export interface RotationStep {
+  dayId: string;
+  withPrev?: boolean;
 }
 
 export interface SetLog {
@@ -52,6 +74,8 @@ export interface CardioLog {
   minutes: number;
   level: number;
   done: boolean;
+  /** Distance covered, for runs and ergs. Pace is derived, never stored. */
+  distanceKm?: number;
 }
 
 export interface ExerciseLog {
@@ -69,6 +93,8 @@ export interface Session {
   dayId: string;
   dayName: string;
   style?: DayStyle;
+  /** Snapshot of the day's track when the session was built; absent = gym. */
+  track?: Track;
   /** Position in the rotation this session occupied, so the cycle survives duplicates. */
   rotationIndex?: number;
   date: string;
@@ -172,6 +198,42 @@ export interface ProfileData {
   updatedAt: number;
 }
 
+export interface ProgramEvent {
+  id: string;
+  name: string;
+  /** ISO date (yyyy-mm-dd). */
+  date: string;
+}
+
+export interface ProgramPhase {
+  id: string;
+  name: string;
+  /** ISO date the phase is meant to start; it runs until the next phase's `from`. */
+  from: string;
+  /** One line: what this phase is for. */
+  focus: string;
+  /** Bullet lines describing the weekly shape, rendered as-is. */
+  week: string[];
+  /** The cycle to run during this phase; applied to `rotation` with one tap. */
+  rotation?: RotationStep[];
+}
+
+/**
+ * A long-arc training program: the events being trained for and the phases
+ * on the way, each carrying its own cycle. Written by the coach pipeline,
+ * rendered in the Plan tab; the app itself only ever switches `rotation` to
+ * a phase's cycle, it never edits the program. Last writer wins wholesale in
+ * the merge, like health and coach.
+ */
+export interface ProgramData {
+  name: string;
+  events: ProgramEvent[];
+  phases: ProgramPhase[];
+  /** Standing guidance (holiday protocol, pace rules), rendered as-is. */
+  notes?: string[];
+  updatedAt: number;
+}
+
 export type CoachArea =
   | "weight"
   | "reps"
@@ -258,15 +320,20 @@ export interface CoachState {
  * floor (supabase-setup.sql) locks out every bundle shipped before the
  * server-side guard: their writes carry version <= 6 and are rejected at the
  * row, which is the one place a stale cached client can't dodge.
+ *
+ * v8 (Hyrox prep): rotation becomes RotationStep[] (AM/PM pairing), day
+ * templates and sessions carry a track, cardio logs carry a distance, and a
+ * program slice holds the phase plan. The rotation shape change is why the
+ * bump is mandatory: a v7 bundle treats rotation entries as strings.
  */
-export const CURRENT_VERSION = 7;
+export const CURRENT_VERSION = 8;
 
 export interface AppData {
-  version: 7;
+  version: 8;
   exercises: Record<string, Exercise>;
   days: DayTemplate[];
-  /** Ordered training cycle of day ids; a day may appear more than once. */
-  rotation: string[];
+  /** Ordered training cycle; a day may appear more than once. */
+  rotation: RotationStep[];
   /** ISO date of the start of plan week 1; drives rehab gates. */
   planStart: string;
   /**
@@ -291,4 +358,6 @@ export interface AppData {
   health: HealthData;
   coach: CoachState;
   profile: ProfileData;
+  /** The long-arc training program (events, phases). Empty when none is loaded. */
+  program: ProgramData;
 }

@@ -144,6 +144,15 @@ export const CATALOG: CatalogEntry[] = [
   C("Treadmill Run", "cardio"),
   C("Treadmill Incline Walk", "cardio"),
   C("Elliptical", "cardio"),
+  C("Run (Outdoor)", "cardio"),
+  C("SkiErg", "cardio"),
+
+  // Hyrox stations logged as sets × reps (or metres, treated as reps).
+  C("Sled Pull", "other"),
+  C("Wall Ball", "other"),
+  C("Burpee Broad Jump", "other"),
+  C("Farmers Carry", "other"),
+  C("Sandbag Lunge", "quads"),
 ];
 
 export function searchCatalog(query: string, limit: number): CatalogEntry[] {

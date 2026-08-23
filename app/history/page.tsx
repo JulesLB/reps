@@ -5,12 +5,14 @@ import { update, useAppData } from "@/lib/store";
 import {
   finishedSessions,
   formatDuration,
+  formatPace,
   formatWeight,
   sessionCardioMinutes,
   sessionMuscles,
   sessionSetCounts,
   sessionVolume,
 } from "@/lib/logic";
+import TrackBadge from "@/components/TrackBadge";
 import type { Activity, AppData, Session } from "@/lib/types";
 import { migrate } from "@/lib/plan";
 import { recordPlan } from "@/lib/planHistory";
@@ -170,9 +172,12 @@ function SessionCard({
           <DayIcon dayName={session.dayName} className="h-6 w-6" />
         </div>
         <div className="min-w-0 flex-1">
-          <p className="display font-semibold uppercase tracking-wide">
-            {session.dayName}
-          </p>
+          <div className="flex min-w-0 items-center gap-1.5">
+            <p className="display min-w-0 truncate font-semibold uppercase tracking-wide">
+              {session.dayName}
+            </p>
+            <TrackBadge track={session.track} />
+          </div>
           <p className="num text-xs text-muted">
             {dateLabel} · {duration} · {detail}
           </p>
@@ -209,7 +214,10 @@ function SessionCard({
                   <li key={log.exerciseId}>
                     <p className="truncate text-sm">{name}</p>
                     <p className="num mt-0.5 text-xs text-muted">
-                      {log.cardio.minutes} min · L{log.cardio.level}
+                      {log.cardio.minutes} min
+                      {log.cardio.distanceKm
+                        ? ` · ${log.cardio.distanceKm} km · ${formatPace(log.cardio.minutes / log.cardio.distanceKm)} /km`
+                        : ` · L${log.cardio.level}`}
                     </p>
                   </li>
                 );

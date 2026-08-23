@@ -17,13 +17,15 @@ import {
   prefillCardio,
   prefillSets,
   restFor,
-  rotationDays,
+  rotationGroups,
   sessionCardioMinutes,
+  sessionDistanceKm,
   sessionSetCounts,
   sessionVolume,
   suggestNextDay,
+  type RotationItem,
 } from "@/lib/logic";
-import type { AppData, DayStyle, DayTemplate, Session } from "@/lib/types";
+import type { AppData, DayStyle, DayTemplate, Session, Track } from "@/lib/types";
 import ExerciseCard from "@/components/ExerciseCard";
 import CardioCard from "@/components/CardioCard";
 import EditDaySheet from "@/components/EditDaySheet";
@@ -31,11 +33,13 @@ import ExercisePicker from "@/components/ExercisePicker";
 import HikeSheet from "@/components/HikeLog";
 import { DayIcon } from "@/components/DayIcons";
 import StorageWarning from "@/components/StorageWarning";
+import TrackBadge from "@/components/TrackBadge";
 import {
   CheckIcon,
   ChevronDownIcon,
   ChevronUpIcon,
   FlameIcon,
+  LinkIcon,
   MountainIcon,
   PencilIcon,
   PlusIcon,
@@ -124,7 +128,7 @@ function TrainHome({
 }) {
   const [loggingHike, setLoggingHike] = useState(false);
   const suggestion = suggestNextDay(data);
-  const cycle = rotationDays(data);
+  const groups = rotationGroups(data);
   const others = extraDays(data);
   const sessions = finishedSessions(data);
   const streak = weekSessionCount(data);
@@ -141,12 +145,27 @@ function TrainHome({
   };
 
   const hero = suggestion?.day ?? null;
+  // The whole calendar day the next session belongs to (AM/PM pairing).
+  const heroGroup = suggestion
+    ? (groups.find((g) => g.some((it) => it.index === suggestion.index)) ?? null)
+    : null;
 
+  // Swap the day ids, keep the pairing flags on their positions: reordering
+  // changes which session happens where, never the AM/PM structure itself.
   const moveInCycle = (index: number, dir: -1 | 1) => {
     update((d) => {
       const j = index + dir;
       if (j < 0 || j >= d.rotation.length) return;
-      [d.rotation[index], d.rotation[j]] = [d.rotation[j], d.rotation[index]];
+      [d.rotation[index].dayId, d.rotation[j].dayId] = [d.rotation[j].dayId, d.rotation[index].dayId];
+    });
+  };
+
+  const togglePair = (index: number) => {
+    update((d) => {
+      const step = d.rotation[index];
+      if (!step || index === 0) return;
+      if (step.withPrev) delete step.withPrev;
+      else step.withPrev = true;
     });
   };
 
@@ -166,9 +185,42 @@ function TrainHome({
 
       {hero ? (
         <section className="rise rounded-3xl border border-volt/25 bg-gradient-to-b from-surface-2 to-surface p-5">
-          <p className="display text-xs font-semibold uppercase tracking-[0.18em] text-volt">
-            {trainedToday ? "Up next" : "Today"}
-          </p>
+          <div className="flex items-center justify-between">
+            <p className="display text-xs font-semibold uppercase tracking-[0.18em] text-volt">
+              {trainedToday ? "Up next" : "Today"}
+              {heroGroup && heroGroup.length > 1 ? ` · ${heroGroup.length} sessions` : ""}
+            </p>
+            <TrackBadge track={hero.track} />
+          </div>
+          {heroGroup && heroGroup.length > 1 && suggestion && (
+            <div className="mt-2.5 space-y-1">
+              {heroGroup.map((it, slot) => {
+                const done = it.index < suggestion.index;
+                const current = it.index === suggestion.index;
+                return (
+                  <div
+                    key={`${it.day.id}-${it.index}`}
+                    className={`flex items-center gap-2 rounded-xl border px-2.5 py-1.5 text-sm ${
+                      current ? "border-volt/40 bg-volt/8" : "border-line-soft bg-surface"
+                    }`}
+                  >
+                    <span
+                      className={`display w-7 shrink-0 text-[10px] font-bold uppercase tracking-wide ${
+                        current ? "text-volt" : "text-faint"
+                      }`}
+                    >
+                      {slotLabel(slot)}
+                    </span>
+                    <span className={`display min-w-0 flex-1 truncate font-semibold uppercase tracking-wide ${done ? "text-muted line-through decoration-1" : ""}`}>
+                      {it.day.name}
+                    </span>
+                    {done && <CheckIcon className="h-4 w-4 shrink-0 text-volt" strokeWidth={2.6} />}
+                    {!done && !current && <span className="shrink-0 text-[10px] uppercase text-faint">later</span>}
+                  </div>
+                );
+              })}
+            </div>
+          )}
           <div className="mt-1 flex items-start justify-between">
             <div className="flex min-w-0 items-center gap-3">
               <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-volt/12 text-volt">
@@ -212,77 +264,54 @@ function TrainHome({
         <h2 className="display mb-2 px-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-faint">
           Your cycle
         </h2>
+        <p className="mb-2 px-1 text-[11px] text-faint">
+          Tap <LinkIcon className="inline h-3 w-3" /> to pair a session with the one above it: same
+          day, morning and evening.
+        </p>
         <div className="space-y-1.5">
-          {cycle.map(({ day, index }) => {
-            const isNext = index === suggestion?.index;
-            return (
+          {groups.map((group) =>
+            group.length === 1 ? (
+              <CycleRow
+                key={`${group[0].day.id}-${group[0].index}`}
+                data={data}
+                item={group[0]}
+                slot={null}
+                isNext={group[0].index === suggestion?.index}
+                stepCount={data.rotation.length}
+                lastDone={lastDone}
+                onMove={moveInCycle}
+                onTogglePair={togglePair}
+                onEdit={onEdit}
+              />
+            ) : (
               <div
-                key={`${day.id}-${index}`}
-                className={`flex items-center gap-2 rounded-2xl border p-2.5 ${
-                  isNext ? "border-volt/40 bg-volt/8" : "border-line-soft bg-surface"
+                key={`group-${group[0].index}`}
+                className={`space-y-1.5 rounded-2xl border p-1.5 ${
+                  group.some((it) => it.index === suggestion?.index)
+                    ? "border-volt/25"
+                    : "border-line"
                 }`}
               >
-                <span
-                  className={`num display flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-sm font-bold ${
-                    isNext ? "bg-volt text-volt-ink" : "bg-surface-2 text-faint"
-                  }`}
-                >
-                  {index + 1}
-                </span>
-                <span className={`shrink-0 ${isNext ? "text-volt" : "text-muted"}`}>
-                  <DayIcon dayName={day.name} className="h-5 w-5" />
-                </span>
-                <div className="min-w-0 flex-1">
-                  <h3 className="display truncate text-lg font-semibold uppercase leading-tight tracking-wide">
-                    {day.name}
-                  </h3>
-                  <p className="truncate text-[11px] text-muted">
-                    {visibleCount(data, day)} exercises
-                    {lastDone(day.id) ? ` · last ${lastDone(day.id)}` : ""}
-                  </p>
-                </div>
-                <div className="flex shrink-0 flex-col">
-                  <button
-                    type="button"
-                    aria-label={`Move ${day.name} earlier in the cycle`}
-                    onClick={() => moveInCycle(index, -1)}
-                    disabled={index === 0}
-                    className="flex h-5 w-7 items-center justify-center text-faint transition-colors duration-150 hover:text-ink disabled:opacity-25"
-                  >
-                    <ChevronUpIcon className="h-3.5 w-3.5" />
-                  </button>
-                  <button
-                    type="button"
-                    aria-label={`Move ${day.name} later in the cycle`}
-                    onClick={() => moveInCycle(index, 1)}
-                    disabled={index === cycle.length - 1}
-                    className="flex h-5 w-7 items-center justify-center text-faint transition-colors duration-150 hover:text-ink disabled:opacity-25"
-                  >
-                    <ChevronDownIcon className="h-3.5 w-3.5" />
-                  </button>
-                </div>
-                <button
-                  type="button"
-                  aria-label={`Edit ${day.name}`}
-                  onClick={() => onEdit(day.id)}
-                  className="flex h-10 w-8 shrink-0 items-center justify-center rounded-lg text-faint transition-colors duration-150 hover:text-ink"
-                >
-                  <PencilIcon className="h-4 w-4" />
-                </button>
-                <button
-                  type="button"
-                  onClick={() => startSession(data, day)}
-                  className={`h-10 shrink-0 rounded-xl px-3 text-sm font-semibold transition-colors duration-150 ${
-                    isNext
-                      ? "bg-volt text-volt-ink"
-                      : "border border-line bg-surface-2 text-ink hover:border-volt/40"
-                  }`}
-                >
-                  Start
-                </button>
+                <p className="display px-2 pt-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-faint">
+                  One day · {group.length} sessions
+                </p>
+                {group.map((item, slot) => (
+                  <CycleRow
+                    key={`${item.day.id}-${item.index}`}
+                    data={data}
+                    item={item}
+                    slot={slot}
+                    isNext={item.index === suggestion?.index}
+                    stepCount={data.rotation.length}
+                    lastDone={lastDone}
+                    onMove={moveInCycle}
+                    onTogglePair={togglePair}
+                    onEdit={onEdit}
+                  />
+                ))}
               </div>
-            );
-          })}
+            )
+          )}
         </div>
       </section>
 
@@ -298,9 +327,12 @@ function TrainHome({
                   <DayIcon dayName={day.name} className="h-5 w-5" />
                 </span>
                 <div className="min-w-0 flex-1">
-                  <h3 className="display truncate text-lg font-semibold uppercase leading-tight tracking-wide">
-                    {day.name}
-                  </h3>
+                  <div className="flex items-center gap-1.5">
+                    <h3 className="display min-w-0 truncate text-lg font-semibold uppercase leading-tight tracking-wide">
+                      {day.name}
+                    </h3>
+                    <TrackBadge track={day.track} />
+                  </div>
                   <p className="truncate text-[11px] text-muted">
                     {visibleCount(data, day)} exercises
                     {lastDone(day.id) ? ` · last ${lastDone(day.id)}` : ""}
@@ -309,7 +341,7 @@ function TrainHome({
                 <button
                   type="button"
                   aria-label={`Add ${day.name} to the cycle`}
-                  onClick={() => update((d) => { d.rotation.push(day.id); })}
+                  onClick={() => update((d) => { d.rotation.push({ dayId: day.id }); })}
                   className="flex h-10 w-8 shrink-0 items-center justify-center rounded-lg text-faint transition-colors duration-150 hover:text-volt"
                 >
                   <PlusIcon className="h-4 w-4" />
@@ -356,6 +388,123 @@ function TrainHome({
   );
 }
 
+function slotLabel(slot: number): string {
+  return slot === 0 ? "AM" : slot === 1 ? "PM" : `#${slot + 1}`;
+}
+
+function CycleRow({
+  data,
+  item,
+  slot,
+  isNext,
+  stepCount,
+  lastDone,
+  onMove,
+  onTogglePair,
+  onEdit,
+}: {
+  data: AppData;
+  item: RotationItem;
+  /** Position inside an AM/PM group, or null for a standalone day. */
+  slot: number | null;
+  isNext: boolean;
+  stepCount: number;
+  lastDone: (dayId: string) => string | null;
+  onMove: (index: number, dir: -1 | 1) => void;
+  onTogglePair: (index: number) => void;
+  onEdit: (id: string) => void;
+}) {
+  const { day, index } = item;
+  return (
+    <div
+      className={`flex items-center gap-1.5 rounded-2xl border p-2 ${
+        isNext ? "border-volt/40 bg-volt/8" : "border-line-soft bg-surface"
+      }`}
+    >
+      <span
+        className={`num display flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-xs font-bold ${
+          isNext ? "bg-volt text-volt-ink" : "bg-surface-2 text-faint"
+        }`}
+      >
+        {slot === null ? index + 1 : slotLabel(slot)}
+      </span>
+      <span className={`shrink-0 ${isNext ? "text-volt" : "text-muted"}`}>
+        <DayIcon dayName={day.name} className="h-5 w-5" />
+      </span>
+      <div className="min-w-0 flex-1">
+        <div className="flex items-center gap-1.5">
+          <h3 className="display min-w-0 truncate text-lg font-semibold uppercase leading-tight tracking-wide">
+            {day.name}
+          </h3>
+          <TrackBadge track={day.track} />
+        </div>
+        <p className="truncate text-[11px] text-muted">
+          {visibleCount(data, day)} exercises
+          {lastDone(day.id) ? ` · last ${lastDone(day.id)}` : ""}
+        </p>
+      </div>
+      <div className="flex shrink-0 flex-col">
+        <button
+          type="button"
+          aria-label={`Move ${day.name} earlier in the cycle`}
+          onClick={() => onMove(index, -1)}
+          disabled={index === 0}
+          className="flex h-5 w-7 items-center justify-center text-faint transition-colors duration-150 hover:text-ink disabled:opacity-25"
+        >
+          <ChevronUpIcon className="h-3.5 w-3.5" />
+        </button>
+        <button
+          type="button"
+          aria-label={`Move ${day.name} later in the cycle`}
+          onClick={() => onMove(index, 1)}
+          disabled={index === stepCount - 1}
+          className="flex h-5 w-7 items-center justify-center text-faint transition-colors duration-150 hover:text-ink disabled:opacity-25"
+        >
+          <ChevronDownIcon className="h-3.5 w-3.5" />
+        </button>
+      </div>
+      {index > 0 ? (
+        <button
+          type="button"
+          aria-label={
+            item.withPrev
+              ? `Unpair ${day.name} from the previous session`
+              : `Pair ${day.name} with the previous session (same day)`
+          }
+          aria-pressed={item.withPrev}
+          onClick={() => onTogglePair(index)}
+          className={`flex h-10 w-8 shrink-0 items-center justify-center rounded-lg transition-colors duration-150 ${
+            item.withPrev ? "text-info" : "text-faint hover:text-ink"
+          }`}
+        >
+          <LinkIcon className="h-4 w-4" />
+        </button>
+      ) : (
+        <span className="w-8 shrink-0" />
+      )}
+      <button
+        type="button"
+        aria-label={`Edit ${day.name}`}
+        onClick={() => onEdit(day.id)}
+        className="flex h-10 w-8 shrink-0 items-center justify-center rounded-lg text-faint transition-colors duration-150 hover:text-ink"
+      >
+        <PencilIcon className="h-4 w-4" />
+      </button>
+      <button
+        type="button"
+        onClick={() => startSession(data, day)}
+        className={`h-10 shrink-0 rounded-xl px-2.5 text-sm font-semibold transition-colors duration-150 ${
+          isNext
+            ? "bg-volt text-volt-ink"
+            : "border border-line bg-surface-2 text-ink hover:border-volt/40"
+        }`}
+      >
+        Start
+      </button>
+    </div>
+  );
+}
+
 function visibleCount(data: AppData, day: DayTemplate): number {
   const week = planWeek(data);
   return day.entries.filter((e) => entryVisible(e, week)).length;
@@ -371,13 +520,21 @@ function weekSessionCount(data: AppData): number {
 function NewDaySheet({ onCreate, onClose }: { onCreate: (id: string) => void; onClose: () => void }) {
   const [name, setName] = useState("");
   const [style, setStyle] = useState<DayStyle>("strength");
+  const [track, setTrack] = useState<Track>("gym");
 
   const create = () => {
     const trimmed = name.trim();
     if (!trimmed) return;
     const id = uid();
     update((d) => {
-      d.days.push({ id, name: trimmed, style, entries: [], exerciseIds: [] });
+      d.days.push({
+        id,
+        name: trimmed,
+        style,
+        ...(track === "hyrox" ? { track } : {}),
+        entries: [],
+        exerciseIds: [],
+      });
     });
     onCreate(id);
   };
@@ -421,6 +578,24 @@ function NewDaySheet({ onCreate, onClose }: { onCreate: (id: string) => void; on
               }`}
             >
               {s === "strength" ? "Strength · sets × reps" : "Cardio · minutes"}
+            </button>
+          ))}
+        </div>
+        <div className="mt-2 flex gap-2">
+          {(["gym", "hyrox"] as Track[]).map((t) => (
+            <button
+              key={t}
+              type="button"
+              onClick={() => setTrack(t)}
+              className={`h-11 flex-1 rounded-xl border text-sm font-semibold transition-colors duration-150 ${
+                track === t
+                  ? t === "hyrox"
+                    ? "border-info/50 bg-info/10 text-info"
+                    : "border-volt/50 bg-volt/10 text-volt"
+                  : "border-line bg-surface-2 text-muted"
+              }`}
+            >
+              {t === "gym" ? "Gym track" : "Hyrox track"}
             </button>
           ))}
         </div>
@@ -479,11 +654,15 @@ function ActiveSession({ data, onFinished }: { data: AppData; onFinished: (s: Se
 
   const handlePick = (exerciseId: string) => {
     if (picker === null) return;
+    // Cardio-group exercises log minutes wherever they appear, so a Hyrox
+    // hybrid day can mix a run with wall balls (mirrors buildSession).
+    const wantsCardio = (d: AppData, id: string): boolean =>
+      d.exercises[id] ? d.exercises[id].muscle === "cardio" : d.active?.style === "cardio";
     if (picker === "add") {
       update((d) => {
         if (!d.active) return;
         if (d.active.logs.some((l) => l.exerciseId === exerciseId)) return;
-        if (d.active.style === "cardio") {
+        if (wantsCardio(d, exerciseId)) {
           d.active.logs.push({ exerciseId, sets: [], cardio: prefillCardio(d, exerciseId) });
         } else {
           d.active.logs.push({
@@ -499,10 +678,10 @@ function ActiveSession({ data, onFinished }: { data: AppData; onFinished: (s: Se
       update((d) => {
         if (!d.active || !d.active.logs[index]) return;
         const prev = d.active.logs[index];
-        if (prev.cardio) {
+        if (wantsCardio(d, exerciseId)) {
           d.active.logs[index] = { exerciseId, sets: [], cardio: prefillCardio(d, exerciseId) };
         } else {
-          const target = logTarget(d, prev);
+          const target = prev.cardio ? undefined : logTarget(d, prev);
           d.active.logs[index] = {
             exerciseId,
             sets: prefillSets(d, exerciseId, target, d.active.dayId),
@@ -559,9 +738,12 @@ function ActiveSession({ data, onFinished }: { data: AppData; onFinished: (s: Se
         <div className="flex items-center gap-3">
           <ProgressRing pct={pct} />
           <div className="min-w-0 flex-1">
-            <h1 className="display truncate text-2xl font-bold uppercase leading-none tracking-wide">
-              {session.dayName}
-            </h1>
+            <div className="flex min-w-0 items-center gap-2">
+              <h1 className="display min-w-0 truncate text-2xl font-bold uppercase leading-none tracking-wide">
+                {session.dayName}
+              </h1>
+              <TrackBadge track={session.track} />
+            </div>
             <p className="num mt-0.5 text-xs text-muted">
               {elapsed} · {done}/{total} sets
             </p>
@@ -732,6 +914,7 @@ function SessionSummary({ data, session, onClose }: { data: AppData; session: Se
   const { done } = sessionSetCounts(session);
   const volume = sessionVolume(session);
   const cardioMin = sessionCardioMinutes(session);
+  const distanceKm = sessionDistanceKm(session);
   const prs = useMemo(() => personalRecords(data, session), [data, session]);
   const duration = session.finishedAt ? formatDuration(session.finishedAt - session.startedAt) : "—";
   const [templateSaved, setTemplateSaved] = useState(false);
@@ -793,7 +976,11 @@ function SessionSummary({ data, session, onClose }: { data: AppData; session: Se
         <Stat label="Duration" value={duration} />
         <Stat label={volume === 0 && cardioMin > 0 ? "Blocks" : "Sets"} value={String(done)} />
         {volume === 0 && cardioMin > 0 ? (
-          <Stat label="Cardio" value={`${cardioMin} min`} />
+          distanceKm > 0 ? (
+            <Stat label="Distance" value={`${formatWeight(Math.round(distanceKm * 10) / 10)} km`} />
+          ) : (
+            <Stat label="Cardio" value={`${cardioMin} min`} />
+          )
         ) : (
           <Stat label="Volume" value={`${formatWeight(Math.round(volume))} kg`} />
         )}

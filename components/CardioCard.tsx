@@ -1,6 +1,7 @@
 "use client";
 
 import type { AppData, ExerciseLog } from "@/lib/types";
+import { formatPace } from "@/lib/logic";
 import NumberField from "./NumberField";
 import { CheckIcon, TrashIcon } from "./icons";
 
@@ -45,7 +46,7 @@ export default function CardioCard({ data, log, onMutate, onDelete }: CardioCard
         )}
       </header>
 
-      <div className="flex items-center gap-2 px-1">
+      <div className="flex items-center gap-1.5 px-1">
         <div className="min-w-0 flex-1">
           <p className="display mb-0.5 text-center text-[9px] font-semibold uppercase tracking-wide text-faint">
             Minutes
@@ -55,6 +56,24 @@ export default function CardioCard({ data, log, onMutate, onDelete }: CardioCard
             value={cardio.minutes}
             step={5}
             onChange={(minutes) => onMutate((l) => { if (l.cardio) l.cardio.minutes = minutes; })}
+            dimmed={cardio.done}
+          />
+        </div>
+        <div className="min-w-0 flex-1">
+          <p className="display mb-0.5 text-center text-[9px] font-semibold uppercase tracking-wide text-faint">
+            Km
+          </p>
+          <NumberField
+            label={`${exercise.name} distance in km`}
+            value={cardio.distanceKm ?? 0}
+            step={0.5}
+            onChange={(km) =>
+              onMutate((l) => {
+                if (!l.cardio) return;
+                if (km > 0) l.cardio.distanceKm = km;
+                else delete l.cardio.distanceKm;
+              })
+            }
             dimmed={cardio.done}
           />
         </div>
@@ -85,6 +104,12 @@ export default function CardioCard({ data, log, onMutate, onDelete }: CardioCard
           </button>
         </div>
       </div>
+
+      {(cardio.distanceKm ?? 0) > 0 && cardio.minutes > 0 && (
+        <p className="num mt-1.5 px-1 text-center text-xs text-muted">
+          {formatPace(cardio.minutes / (cardio.distanceKm ?? 1))} /km
+        </p>
+      )}
     </section>
   );
 }

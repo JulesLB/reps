@@ -2,10 +2,11 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { DumbbellIcon, HistoryIcon, SparkIcon, TrendIcon } from "./icons";
+import { DumbbellIcon, FlagIcon, HistoryIcon, SparkIcon, TrendIcon } from "./icons";
 
 const TABS = [
   { href: "/", label: "Train", Icon: DumbbellIcon },
+  { href: "/plan", label: "Plan", Icon: FlagIcon },
   { href: "/history", label: "History", Icon: HistoryIcon },
   { href: "/progress", label: "Progress", Icon: TrendIcon },
   { href: "/coach", label: "Coach", Icon: SparkIcon },

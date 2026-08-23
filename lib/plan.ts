@@ -8,6 +8,10 @@ import type {
   MuscleGroup,
   PlanEntry,
   ProfileData,
+  ProgramData,
+  ProgramEvent,
+  ProgramPhase,
+  RotationStep,
   Settings,
 } from "./types";
 
@@ -172,8 +176,30 @@ export function defaultSettings(): Settings {
   };
 }
 
-export function planRotation(): string[] {
-  return [...PLAN_ROTATION];
+export function planRotation(): RotationStep[] {
+  return PLAN_ROTATION.map((dayId) => ({ dayId }));
+}
+
+/**
+ * Coerce any stored rotation to RotationStep[]. Pre-v8 blobs (and plan-history
+ * snapshots taken by pre-v8 builds) store plain day-id strings; hand-edited
+ * imports can hold anything. Junk entries drop rather than crash, and a step
+ * can never claim `withPrev` when it has no previous step to attach to.
+ */
+export function asRotation(raw: unknown): RotationStep[] {
+  if (!Array.isArray(raw)) return [];
+  const steps: RotationStep[] = [];
+  for (const item of raw) {
+    if (typeof item === "string" && item) {
+      steps.push({ dayId: item });
+      continue;
+    }
+    if (item && typeof item === "object" && typeof (item as RotationStep).dayId === "string") {
+      const withPrev = (item as RotationStep).withPrev === true && steps.length > 0;
+      steps.push({ dayId: (item as RotationStep).dayId, ...(withPrev ? { withPrev: true } : {}) });
+    }
+  }
+  return steps;
 }
 
 /** Order-insensitive fingerprint of what the user actually sees and edits in a plan. */
@@ -184,6 +210,7 @@ function daysFingerprint(days: DayTemplate[]): string {
         id: d.id,
         name: d.name,
         style: d.style ?? "strength",
+        track: d.track ?? null,
         entries: (d.entries ?? []).map((e) => [
           e.exerciseId,
           e.sets,
@@ -209,9 +236,11 @@ let stockDaysSig: string | null = null;
  */
 export function isStockPlan(d: Pick<AppData, "days" | "rotation" | "planStart">): boolean {
   if (stockDaysSig === null) stockDaysSig = daysFingerprint(buildPlanDays({}));
+  // Rotations are compared through asRotation so a pre-v8 stock blob (plain
+  // string ids) and a v8 stock blob (steps) both read as stock.
   return (
     d.planStart === PLAN_START &&
-    JSON.stringify(d.rotation) === JSON.stringify(PLAN_ROTATION) &&
+    JSON.stringify(asRotation(d.rotation)) === JSON.stringify(planRotation()) &&
     daysFingerprint(d.days) === stockDaysSig
   );
 }
@@ -251,7 +280,7 @@ export function migrate(raw: unknown): AppData {
   if (version === 2) {
     const fromSchedule = (d.schedule ?? []).filter((x): x is string => Boolean(x));
     const next = d as unknown as AppData;
-    next.rotation = fromSchedule.length ? fromSchedule : planRotation();
+    next.rotation = fromSchedule.length ? asRotation(fromSchedule) : planRotation();
     next.planUpdatedAt = 0;
     delete (next as { schedule?: unknown }).schedule;
     return normalize(next);
@@ -303,7 +332,7 @@ export function migrate(raw: unknown): AppData {
   );
 
   return normalize({
-    version: 7,
+    version: 8,
     exercises,
     days: [...planDays, ...kept],
     rotation: planRotation(),
@@ -317,6 +346,7 @@ export function migrate(raw: unknown): AppData {
     health: emptyHealth(),
     coach: emptyCoach(),
     profile: emptyProfile(),
+    program: emptyProgram(),
   });
 }
 
@@ -330,6 +360,10 @@ export function emptyCoach(): CoachState {
 
 export function emptyProfile(): ProfileData {
   return { goal: "", constraints: [], updatedAt: 0 };
+}
+
+export function emptyProgram(): ProgramData {
+  return { name: "", events: [], phases: [], updatedAt: 0 };
 }
 
 /**
@@ -399,14 +433,18 @@ function normalize(d: AppData): AppData {
     updatedAt: boundedStamp(rawProfile.updatedAt),
   };
 
+  const program = normalizeProgram(d.program);
+
+  const rotation = asRotation(d.rotation);
+
   // Rebuilt field by field rather than passed through, so anything a hand-edited
   // backup file bolted onto the blob is dropped here instead of being persisted
   // and pushed to every other device.
   return {
-    version: 7,
+    version: 8,
     exercises: d.exercises ?? {},
     days: Array.isArray(d.days) ? d.days : [],
-    rotation: Array.isArray(d.rotation) && d.rotation.length ? d.rotation : planRotation(),
+    rotation: rotation.length ? rotation : planRotation(),
     planStart: typeof d.planStart === "string" ? d.planStart : PLAN_START,
     planUpdatedAt: boundedStamp(d.planUpdatedAt),
     sessions,
@@ -417,5 +455,60 @@ function normalize(d: AppData): AppData {
     health,
     coach,
     profile,
+    program,
+  };
+}
+
+/** Generous for real content, far short of anything that would bloat a push. */
+const MAX_PROGRAM_PHASES = 12;
+const MAX_PROGRAM_EVENTS = 8;
+const MAX_PROGRAM_LINES = 12;
+const MAX_PROGRAM_LINE = 300;
+
+const cleanLine = (v: unknown, max: number = MAX_PROGRAM_LINE): string =>
+  typeof v === "string" ? v.trim().slice(0, max) : "";
+
+const cleanLines = (v: unknown): string[] =>
+  (Array.isArray(v) ? v : [])
+    .map((l) => cleanLine(l))
+    .filter(Boolean)
+    .slice(0, MAX_PROGRAM_LINES);
+
+/**
+ * The program is written by the coach pipeline and rendered as-is in the Plan
+ * tab, so it gets the same treatment as profile: every field coerced, trimmed
+ * and bounded rather than trusted.
+ */
+function normalizeProgram(raw: unknown): ProgramData {
+  const p = (raw ?? {}) as Partial<ProgramData>;
+  const events: ProgramEvent[] = (Array.isArray(p.events) ? p.events : [])
+    .map((e) => ({
+      id: cleanLine((e as ProgramEvent)?.id, 60),
+      name: cleanLine((e as ProgramEvent)?.name, 80),
+      date: cleanLine((e as ProgramEvent)?.date, 10),
+    }))
+    .filter((e) => e.id && e.name && /^\d{4}-\d{2}-\d{2}$/.test(e.date))
+    .slice(0, MAX_PROGRAM_EVENTS);
+  const phases: ProgramPhase[] = (Array.isArray(p.phases) ? p.phases : [])
+    .map((ph) => {
+      const rotation = asRotation((ph as ProgramPhase)?.rotation);
+      return {
+        id: cleanLine((ph as ProgramPhase)?.id, 60),
+        name: cleanLine((ph as ProgramPhase)?.name, 80),
+        from: cleanLine((ph as ProgramPhase)?.from, 10),
+        focus: cleanLine((ph as ProgramPhase)?.focus),
+        week: cleanLines((ph as ProgramPhase)?.week),
+        ...(rotation.length ? { rotation } : {}),
+      };
+    })
+    .filter((ph) => ph.id && ph.name && /^\d{4}-\d{2}-\d{2}$/.test(ph.from))
+    .slice(0, MAX_PROGRAM_PHASES);
+  const notes = cleanLines(p.notes);
+  return {
+    name: cleanLine(p.name, 80),
+    events,
+    phases,
+    ...(notes.length ? { notes } : {}),
+    updatedAt: boundedStamp(p.updatedAt),
   };
 }

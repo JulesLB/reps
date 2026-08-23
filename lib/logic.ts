@@ -32,19 +32,40 @@ export function planWeek(data: AppData, now: number = Date.now()): number {
   return Math.max(1, diff + 1);
 }
 
+export interface RotationItem {
+  day: DayTemplate;
+  index: number;
+  /** Same calendar day as the previous step (AM/PM pairing). */
+  withPrev: boolean;
+}
+
 /** The rotation resolved to real templates, in cycle order. */
-export function rotationDays(data: AppData): Array<{ day: DayTemplate; index: number }> {
+export function rotationDays(data: AppData): RotationItem[] {
   return (data.rotation ?? [])
-    .map((id, index) => {
-      const day = data.days.find((d) => d.id === id);
-      return day ? { day, index } : null;
+    .map((step, index) => {
+      const day = data.days.find((d) => d.id === step.dayId);
+      return day ? { day, index, withPrev: step.withPrev === true && index > 0 } : null;
     })
-    .filter((x): x is { day: DayTemplate; index: number } => x !== null);
+    .filter((x): x is RotationItem => x !== null);
+}
+
+/**
+ * The cycle as calendar-day groups: consecutive steps linked by `withPrev`
+ * render as one training day (AM lift, PM run). A group of one is an
+ * ordinary single-session day.
+ */
+export function rotationGroups(data: AppData): RotationItem[][] {
+  const groups: RotationItem[][] = [];
+  for (const item of rotationDays(data)) {
+    if (item.withPrev && groups.length) groups[groups.length - 1].push(item);
+    else groups.push([item]);
+  }
+  return groups;
 }
 
 /** Day types that exist but sit outside the cycle (a one-off cardio day, say). */
 export function extraDays(data: AppData): DayTemplate[] {
-  const inCycle = new Set(data.rotation ?? []);
+  const inCycle = new Set((data.rotation ?? []).map((s) => s.dayId));
   return data.days.filter((d) => !inCycle.has(d.id));
 }
 
@@ -61,7 +82,7 @@ export function nextRotationIndex(data: AppData): number {
   const li =
     typeof last.rotationIndex === "number" && last.rotationIndex < rot.length
       ? last.rotationIndex
-      : rot.indexOf(last.dayId);
+      : rot.findIndex((s) => s.dayId === last.dayId);
   if (li < 0) return 0;
   return (li + 1) % rot.length;
 }
@@ -76,7 +97,7 @@ export function suggestNextDay(data: AppData): Suggestion | null {
   const rot = data.rotation ?? [];
   if (!rot.length) return data.days[0] ? { day: data.days[0], index: 0 } : null;
   const index = nextRotationIndex(data);
-  const day = data.days.find((d) => d.id === rot[index]);
+  const day = data.days.find((d) => d.id === rot[index]?.dayId);
   return day ? { day, index } : null;
 }
 
@@ -87,11 +108,11 @@ export function suggestNextDay(data: AppData): Suggestion | null {
  */
 export function rotationIndexFor(data: AppData, dayId: string): number | undefined {
   const rot = data.rotation ?? [];
-  if (!rot.includes(dayId)) return undefined;
+  if (!rot.some((s) => s.dayId === dayId)) return undefined;
   const start = nextRotationIndex(data);
   for (let i = 0; i < rot.length; i++) {
     const idx = (start + i) % rot.length;
-    if (rot[idx] === dayId) return idx;
+    if (rot[idx].dayId === dayId) return idx;
   }
   return undefined;
 }
@@ -248,34 +269,54 @@ export function prefillSets(
 export function prefillCardio(data: AppData, exerciseId: string): CardioLog {
   for (const session of finishedSessions(data)) {
     const log = session.logs.find((l) => l.exerciseId === exerciseId && l.cardio?.done);
-    if (log?.cardio) return { minutes: log.cardio.minutes, level: log.cardio.level, done: false };
+    if (log?.cardio)
+      return {
+        minutes: log.cardio.minutes,
+        level: log.cardio.level,
+        done: false,
+        ...(log.cardio.distanceKm ? { distanceKm: log.cardio.distanceKm } : {}),
+      };
   }
   return { minutes: 30, level: 8, done: false };
 }
 
+/**
+ * Whether an entry logs as cardio (minutes + distance) or as sets × reps.
+ * Decided per exercise, so a Hyrox hybrid day can mix a run with wall balls:
+ * cardio-group exercises always log minutes, everything else logs sets, and
+ * the day's style only decides the fallback for an unknown exercise.
+ */
+export function entryIsCardio(data: AppData, day: DayTemplate, exerciseId: string): boolean {
+  const ex = data.exercises[exerciseId];
+  if (!ex) return day.style === "cardio";
+  return ex.muscle === "cardio";
+}
+
 export function buildSession(data: AppData, day: DayTemplate, now: number): Session {
   const entries = visibleEntries(data, day, now).filter((e) => data.exercises[e.exerciseId]);
-  const logs: ExerciseLog[] =
-    day.style === "cardio"
-      ? entries.map((e) => ({
+  const logs: ExerciseLog[] = entries.map((e) =>
+    entryIsCardio(data, day, e.exerciseId)
+      ? {
           exerciseId: e.exerciseId,
           sets: [],
           cardio: prefillCardio(data, e.exerciseId),
           ...(e.note ? { note: e.note } : {}),
-        }))
-      : entries.map((e) => ({
+        }
+      : {
           exerciseId: e.exerciseId,
           sets: prefillSets(data, e.exerciseId, { sets: e.sets, reps: e.reps }, day.id),
           targetSets: e.sets,
           targetReps: e.reps,
           ...(e.note ? { note: e.note } : {}),
-        }));
+        }
+  );
   const index = rotationIndexFor(data, day.id);
   return {
     id: uid(),
     dayId: day.id,
     dayName: day.name,
     style: day.style,
+    ...(day.track ? { track: day.track } : {}),
     ...(index === undefined ? {} : { rotationIndex: index }),
     date: new Date(now).toISOString(),
     startedAt: now,
@@ -316,6 +357,76 @@ export function sessionVolume(session: Session): number {
 
 export function sessionCardioMinutes(session: Session): number {
   return session.logs.reduce((sum, log) => sum + (log.cardio?.done ? log.cardio.minutes : 0), 0);
+}
+
+export function sessionDistanceKm(session: Session): number {
+  return session.logs.reduce((sum, log) => sum + (log.cardio?.done ? (log.cardio.distanceKm ?? 0) : 0), 0);
+}
+
+/** Which track a session belongs to; sessions from before tracks read as gym. */
+export function sessionTrack(session: Session): "gym" | "hyrox" {
+  return session.track === "hyrox" ? "hyrox" : "gym";
+}
+
+/* ---- running ----------------------------------------------------------- */
+
+export interface RunPoint {
+  t: number;
+  km: number;
+  minutes: number;
+  /** Minutes per km. */
+  pace: number;
+}
+
+const RUN_NAME = /\brun\b|\brunning\b|treadmill/i;
+
+/**
+ * Every logged run with a distance, oldest first: cardio blocks inside
+ * sessions (exercise name says run) plus outdoor runs from the activity log.
+ * Ergs and bikes are deliberately excluded — pace only means something
+ * within one modality.
+ */
+export function runHistory(data: AppData): RunPoint[] {
+  const points: RunPoint[] = [];
+  for (const session of finishedSessions(data)) {
+    for (const log of session.logs) {
+      const c = log.cardio;
+      if (!c?.done || !c.distanceKm || c.distanceKm <= 0 || c.minutes <= 0) continue;
+      const name = data.exercises[log.exerciseId]?.name ?? "";
+      if (!RUN_NAME.test(name)) continue;
+      points.push({ t: session.startedAt, km: c.distanceKm, minutes: c.minutes, pace: c.minutes / c.distanceKm });
+    }
+  }
+  for (const a of data.activities) {
+    if (a.deleted || a.type !== "run" || !a.distanceKm || a.distanceKm <= 0 || a.minutes <= 0) continue;
+    points.push({
+      t: new Date(`${a.date}T12:00:00`).getTime(),
+      km: a.distanceKm,
+      minutes: a.minutes,
+      pace: a.minutes / a.distanceKm,
+    });
+  }
+  return points.sort((a, b) => a.t - b.t);
+}
+
+/** Run km per ISO week (Monday start) for the trailing `n` weeks, oldest first. */
+export function weeklyRunKm(data: AppData, n: number, now: number = Date.now()): Array<{ weekStart: number; km: number }> {
+  const WEEK = 7 * 24 * 3600 * 1000;
+  const thisWeek = weekStart(now);
+  const buckets = Array.from({ length: n }, (_, i) => ({ weekStart: thisWeek - (n - 1 - i) * WEEK, km: 0 }));
+  for (const p of runHistory(data)) {
+    const ws = weekStart(p.t);
+    const b = buckets.find((x) => x.weekStart === ws);
+    if (b) b.km += p.km;
+  }
+  return buckets;
+}
+
+/** "5:42" for 5.7 min/km; the /km suffix is the caller's. */
+export function formatPace(minPerKm: number): string {
+  if (!Number.isFinite(minPerKm) || minPerKm <= 0) return "—";
+  const total = Math.round(minPerKm * 60);
+  return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, "0")}`;
 }
 
 export function sessionSetCounts(session: Session): { done: number; total: number } {

@@ -1,9 +1,9 @@
 "use client";
 
 import { useState } from "react";
-import type { AppData, MuscleGroup } from "@/lib/types";
+import type { AppData, MuscleGroup, Track } from "@/lib/types";
 import { uid, update } from "@/lib/store";
-import { planWeek } from "@/lib/logic";
+import { entryIsCardio, planWeek } from "@/lib/logic";
 import ExercisePicker from "./ExercisePicker";
 import { CheckIcon, ChevronDownIcon, ChevronUpIcon, CopyIcon, MinusIcon, PlusIcon, TrashIcon, XIcon } from "./icons";
 
@@ -53,6 +53,7 @@ export default function EditDaySheet({ data, dayId, onClose, onSwitchDay }: Edit
         id,
         name: `${src.name} copy`,
         style: src.style,
+        ...(src.track ? { track: src.track } : {}),
         entries: src.entries.map((e) => ({ ...e })),
         exerciseIds: [...src.exerciseIds],
       });
@@ -66,7 +67,10 @@ export default function EditDaySheet({ data, dayId, onClose, onSwitchDay }: Edit
     if (!confirm(`Delete the ${day.name} session type? Past sessions stay in your history.`)) return;
     update((d) => {
       d.days = d.days.filter((x) => x.id !== dayId);
-      d.rotation = (d.rotation ?? []).filter((s) => s !== dayId);
+      // Dropping steps can orphan a `withPrev` on what follows; re-normalize.
+      const kept = (d.rotation ?? []).filter((s) => s.dayId !== dayId);
+      if (kept[0]?.withPrev) delete kept[0].withPrev;
+      d.rotation = kept;
     });
     onClose();
   };
@@ -92,6 +96,34 @@ export default function EditDaySheet({ data, dayId, onClose, onSwitchDay }: Edit
             <CheckIcon className="h-4 w-4" strokeWidth={2.6} /> Done
           </button>
         </header>
+
+        <div className="mb-4 flex gap-2">
+          {(["gym", "hyrox"] as Track[]).map((t) => {
+            const active = (day.track ?? "gym") === t;
+            return (
+              <button
+                key={t}
+                type="button"
+                aria-pressed={active}
+                onClick={() =>
+                  mutateDay((x) => {
+                    if (t === "hyrox") x.track = "hyrox";
+                    else delete x.track;
+                  })
+                }
+                className={`h-10 flex-1 rounded-xl border text-sm font-semibold transition-colors duration-150 ${
+                  active
+                    ? t === "hyrox"
+                      ? "border-info/50 bg-info/10 text-info"
+                      : "border-volt/50 bg-volt/10 text-volt"
+                    : "border-line bg-surface-2 text-muted"
+                }`}
+              >
+                {t === "gym" ? "Gym track" : "Hyrox track"}
+              </button>
+            );
+          })}
+        </div>
 
         <div className="space-y-2">
           {day.entries.map((entry, i) => {
@@ -159,7 +191,7 @@ export default function EditDaySheet({ data, dayId, onClose, onSwitchDay }: Edit
                     <XIcon className="h-4 w-4" />
                   </button>
                 </div>
-                {day.style === "strength" && (
+                {!entryIsCardio(data, day, entry.exerciseId) && (
                   <div className="mt-1 flex items-center gap-4 pl-10">
                     <TargetStepper
                       label="Sets"

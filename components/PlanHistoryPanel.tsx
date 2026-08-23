@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { getData, update } from "@/lib/store";
 import { planSlice, planSnapshots, samePlanSlice, type PlanSnapshot } from "@/lib/planHistory";
+import { asRotation } from "@/lib/plan";
 
 function when(at: number): string {
   return new Date(at).toLocaleString(undefined, {
@@ -36,7 +37,8 @@ export default function PlanHistoryPanel() {
     if (!confirm(`Restore this plan from ${when(snap.at)}?\n\n${names}\n\nYour logged sessions are not touched.`)) return;
     update((d) => {
       d.days = snap.days;
-      d.rotation = snap.rotation;
+      // Snapshots taken before v8 store plain day-id strings.
+      d.rotation = asRotation(snap.rotation);
       d.planStart = snap.planStart;
       // Union, snapshot winning conflicts: sessions logged since still resolve
       // their exercise ids, and the snapshot's names come back as they were.
