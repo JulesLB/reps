@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { update, useAppData } from "@/lib/store";
-import { formatPace, runHistory, weeklyRunKm } from "@/lib/logic";
+import { formatPace, runHistory, weekStart, weeklyRunKm } from "@/lib/logic";
 import type { AppData, ProgramPhase } from "@/lib/types";
 import StorageWarning from "@/components/StorageWarning";
 import { CheckIcon, ChevronDownIcon, ChevronUpIcon, FlagIcon } from "@/components/icons";
@@ -127,6 +127,16 @@ function currentPhaseIndex(phases: ProgramPhase[], now: number): number {
   return current;
 }
 
+/**
+ * 1-based week within a phase, counted in calendar weeks (Monday start) so the
+ * phase's own instructions ("from week 3", "week 4 is a down week") have a
+ * number in the app to anchor to.
+ */
+function phaseWeek(phase: ProgramPhase, now: number): number {
+  const WEEK = 7 * 24 * 3600 * 1000;
+  return Math.max(1, Math.floor((weekStart(now) - weekStart(parseISO(phase.from))) / WEEK) + 1);
+}
+
 function Phases({ data }: { data: AppData }) {
   const [open, setOpen] = useState<string | null>(null);
   const phases = data.program.phases;
@@ -186,7 +196,7 @@ function Phases({ data }: { data: AppData }) {
                     </span>
                     {isCurrent && (
                       <span className="shrink-0 rounded-full border border-info/40 bg-info/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-info">
-                        now
+                        now · wk {phaseWeek(phase, now)}
                       </span>
                     )}
                   </span>

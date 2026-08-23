@@ -325,10 +325,12 @@ function TrainHome({
         <h2 className="display mb-2 px-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-faint">
           Your cycle{showPlanSwitch ? (onHyrox ? " · Hyrox plan" : " · Gym plan") : ""}
         </h2>
-        <p className="mb-2 px-1 text-[11px] text-faint">
-          Tap <LinkIcon className="inline h-3 w-3" /> to pair a session with the one above it: same
-          day, morning and evening.
-        </p>
+        {onHyrox && (
+          <p className="mb-2 px-1 text-[11px] text-faint">
+            Tap <LinkIcon className="inline h-3 w-3" /> to pair a session with the one above it:
+            same day, morning and evening.
+          </p>
+        )}
         <div className="space-y-1.5">
           {groups.map((group) =>
             group.length === 1 ? (
@@ -339,6 +341,7 @@ function TrainHome({
                 slot={null}
                 isNext={group[0].index === suggestion?.index}
                 stepCount={stepCount}
+                canPair={onHyrox}
                 lastDone={lastDone}
                 onMove={moveInCycle}
                 onTogglePair={togglePair}
@@ -364,6 +367,7 @@ function TrainHome({
                     slot={slot}
                     isNext={item.index === suggestion?.index}
                     stepCount={stepCount}
+                    canPair={onHyrox}
                     lastDone={lastDone}
                     onMove={moveInCycle}
                     onTogglePair={togglePair}
@@ -460,6 +464,7 @@ function CycleRow({
   slot,
   isNext,
   stepCount,
+  canPair,
   lastDone,
   onMove,
   onTogglePair,
@@ -471,6 +476,8 @@ function CycleRow({
   slot: number | null;
   isNext: boolean;
   stepCount: number;
+  /** AM/PM pairing is a Hyrox-plan tool; the gym plan stays one session a day. */
+  canPair: boolean;
   lastDone: (dayId: string) => string | null;
   onMove: (index: number, dir: -1 | 1) => void;
   onTogglePair: (index: number) => void;
@@ -525,7 +532,7 @@ function CycleRow({
           <ChevronDownIcon className="h-3.5 w-3.5" />
         </button>
       </div>
-      {index > 0 ? (
+      {canPair && index > 0 ? (
         <button
           type="button"
           aria-label={
