@@ -4,7 +4,9 @@ import { useState } from "react";
 import type { AppData, MuscleGroup, Track } from "@/lib/types";
 import { uid, update } from "@/lib/store";
 import { entryIsCardio, planWeek } from "@/lib/logic";
+import { stretchRoutineFor } from "@/lib/stretches";
 import ExercisePicker from "./ExercisePicker";
+import StretchChecklist from "./StretchChecklist";
 import { CheckIcon, ChevronDownIcon, ChevronUpIcon, CopyIcon, MinusIcon, PlusIcon, TrashIcon, XIcon } from "./icons";
 
 const MUSCLES: MuscleGroup[] = [
@@ -23,7 +25,10 @@ interface EditDaySheetProps {
 export default function EditDaySheet({ data, dayId, onClose, onSwitchDay }: EditDaySheetProps) {
   const day = data.days.find((d) => d.id === dayId);
   const [showPicker, setShowPicker] = useState(false);
+  const [showStretches, setShowStretches] = useState(false);
   if (!day) return null;
+
+  const stretches = stretchRoutineFor(day);
 
   const week = planWeek(data);
 
@@ -270,6 +275,25 @@ export default function EditDaySheet({ data, dayId, onClose, onSwitchDay }: Edit
         >
           <PlusIcon className="h-4 w-4" /> Add exercise
         </button>
+
+        {stretches && (
+          <div className="mt-6">
+            <button
+              type="button"
+              aria-expanded={showStretches}
+              onClick={() => setShowStretches((s) => !s)}
+              className="flex w-full items-center justify-center gap-2 rounded-2xl border border-line py-3.5 text-sm font-semibold text-muted transition-colors duration-150 hover:border-volt/40 hover:text-ink"
+            >
+              After this session: {stretches.title.toLowerCase()} · ~{stretches.minutes} min
+              {showStretches ? <ChevronUpIcon className="h-4 w-4" /> : <ChevronDownIcon className="h-4 w-4" />}
+            </button>
+            {showStretches && (
+              <div className="mt-2">
+                <StretchChecklist routine={stretches} />
+              </div>
+            )}
+          </div>
+        )}
 
         <button
           type="button"

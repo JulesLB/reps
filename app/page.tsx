@@ -38,7 +38,9 @@ import ExercisePicker from "@/components/ExercisePicker";
 import HikeSheet from "@/components/HikeLog";
 import { DayIcon } from "@/components/DayIcons";
 import StorageWarning from "@/components/StorageWarning";
+import StretchChecklist from "@/components/StretchChecklist";
 import TrackBadge from "@/components/TrackBadge";
+import { stretchRoutineFor } from "@/lib/stretches";
 import {
   CheckIcon,
   ChevronDownIcon,
@@ -1006,6 +1008,10 @@ function SessionSummary({ data, session, onClose }: { data: AppData; session: Se
   const prs = useMemo(() => personalRecords(data, session), [data, session]);
   const duration = session.finishedAt ? formatDuration(session.finishedAt - session.startedAt) : "—";
   const [templateSaved, setTemplateSaved] = useState(false);
+  const stretches = useMemo(
+    () => stretchRoutineFor({ name: session.dayName, style: session.style, track: session.track }),
+    [session]
+  );
 
   const templateChanged = useMemo(() => {
     const day = data.days.find((d) => d.id === session.dayId);
@@ -1075,6 +1081,12 @@ function SessionSummary({ data, session, onClose }: { data: AppData; session: Se
           <Stat label="Volume" value={`${formatWeight(Math.round(volume))} kg`} />
         )}
       </div>
+
+      {stretches && (
+        <div className="mt-4">
+          <StretchChecklist routine={stretches} />
+        </div>
+      )}
 
       {prs.length > 0 && (
         <div className="mt-4 rounded-2xl border border-amber/30 bg-amber/10 p-4">
