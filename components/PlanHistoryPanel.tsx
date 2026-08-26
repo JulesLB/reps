@@ -36,6 +36,16 @@ export default function PlanHistoryPanel() {
     const names = snap.days.map((d) => d.name).join(", ");
     if (!confirm(`Restore this plan from ${when(snap.at)}?\n\n${names}\n\nYour logged sessions are not touched.`)) return;
     update((d) => {
+      // A day the snapshot doesn't have is one this restore is deliberately
+      // dropping, so it needs a tombstone: the merge unions days by id and
+      // would otherwise pull it straight back from the cloud (lib/merge.ts).
+      const kept = new Set(snap.days.map((x) => x.id));
+      for (const day of d.days) {
+        if (!kept.has(day.id) && !d.deletedDayIds.includes(day.id)) d.deletedDayIds.push(day.id);
+      }
+      // Restoring a day the user had deleted un-deletes it, or the tombstone
+      // would win right back over the snapshot it just came from.
+      d.deletedDayIds = d.deletedDayIds.filter((id) => !kept.has(id));
       d.days = snap.days;
       // Snapshots taken before v8 store plain day-id strings, and ones taken
       // before the two-plan split have no hyroxRotation at all.

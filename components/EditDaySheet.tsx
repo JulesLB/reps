@@ -72,6 +72,10 @@ export default function EditDaySheet({ data, dayId, onClose, onSwitchDay }: Edit
     if (!confirm(`Delete the ${day.name} session type? Past sessions stay in your history.`)) return;
     update((d) => {
       d.days = d.days.filter((x) => x.id !== dayId);
+      // The merge unions days by id, so absence alone doesn't travel — without
+      // this tombstone the other device's copy comes straight back on the next
+      // sync (lib/merge.ts).
+      if (!d.deletedDayIds.includes(dayId)) d.deletedDayIds.push(dayId);
       // Dropping steps can orphan a `withPrev` on what follows; re-normalize.
       // The day may sit in either plan's cycle, so both are cleaned.
       const without = (rot: typeof d.rotation) => {

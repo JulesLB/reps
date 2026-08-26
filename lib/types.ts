@@ -346,11 +346,21 @@ export interface CoachState {
  * distance, and a program slice holds the phase plan. The rotation shape
  * change is why the bump is mandatory: a v7 bundle treats rotation entries
  * as strings.
+ *
+ * v9 (day tombstones): `days` and `exercises` stop being merged wholesale from
+ * whichever side has the newer planUpdatedAt, and are unioned by id instead
+ * (lib/merge.ts). Under the old rule any device holding an older copy of the
+ * plan deleted everything the other side had added the moment it made any
+ * plan edit of its own — which is how three pushed day templates vanished on
+ * 2026-08-25/26, taking the Hyrox cycle with them. Deletes now travel as
+ * explicit tombstones in `deletedDayIds` rather than as absence. The bump is
+ * what locks the old rule out: a v8 bundle still merges wholesale, and only
+ * the database version floor can stop one that is already cached on a phone.
  */
-export const CURRENT_VERSION = 8;
+export const CURRENT_VERSION = 9;
 
 export interface AppData {
-  version: 8;
+  version: 9;
   exercises: Record<string, Exercise>;
   days: DayTemplate[];
   /** The gym plan's ordered cycle; a day may appear more than once. */
@@ -362,6 +372,13 @@ export interface AppData {
   hyroxRotation: RotationStep[];
   /** Which plan the Train tab shows and advances. */
   activeTrack: Track;
+  /**
+   * Ids of day templates deleted on some device. `days` is unioned by id
+   * across devices, so absence no longer means "deleted" — without a
+   * tombstone the other device's copy would simply come back on the next
+   * sync. Same reason Activity carries a `deleted` flag.
+   */
+  deletedDayIds: string[];
   /** ISO date of the start of plan week 1; drives rehab gates. */
   planStart: string;
   /**

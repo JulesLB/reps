@@ -102,6 +102,13 @@ function applyPlan(blob, plan) {
       blob.days[i] = clean;
       summary.push(`~day ${day.name}`);
     }
+    // Pushing a day is a deliberate resurrection: without clearing the
+    // tombstone, the first client to merge would delete it again (v9 unions
+    // days by id, so `deletedDayIds` is the only thing that can remove one).
+    if (Array.isArray(blob.deletedDayIds) && blob.deletedDayIds.includes(day.id)) {
+      blob.deletedDayIds = blob.deletedDayIds.filter((id) => id !== day.id);
+      summary.push(`-tombstone ${day.id}`);
+    }
   }
   const knownDayIds = new Set(blob.days.map((d) => d.id));
   if (plan.rotation) {

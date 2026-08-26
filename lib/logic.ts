@@ -119,9 +119,29 @@ export function suggestNextDay(data: AppData): Suggestion | null {
   // An empty Hyrox cycle is a real state (no phase loaded yet); the home
   // screen renders its own pointer to the Plan tab instead of a suggestion.
   if (!rot.length) return null;
-  const index = nextRotationIndex(data);
-  const day = data.days.find((d) => d.id === rot[index]?.dayId);
-  return day ? { day, index } : null;
+  const start = nextRotationIndex(data);
+  // Walk the cycle rather than reading one slot: a step whose day template
+  // this device hasn't got is a gap to step over, not a reason to render "no
+  // sessions yet" over a cycle that is mostly fine. That exact null took out
+  // the whole Train screen on 2026-08-26, when a sync dropped three of the
+  // nine days the Hyrox cycle pointed at (see missingRotationDayIds).
+  for (let i = 0; i < rot.length; i++) {
+    const index = (start + i) % rot.length;
+    const day = data.days.find((d) => d.id === rot[index].dayId);
+    if (day) return { day, index };
+  }
+  return null;
+}
+
+/**
+ * Steps of the active cycle whose day template is nowhere in this blob, in
+ * cycle order and deduplicated. Always a bug somewhere upstream — a program
+ * pushed without its day templates, or a sync that dropped them — so the
+ * Train tab names it rather than quietly rendering a shorter cycle.
+ */
+export function missingRotationDayIds(data: AppData): string[] {
+  const known = new Set(data.days.map((d) => d.id));
+  return [...new Set(activeRotation(data).map((s) => s.dayId).filter((id) => !known.has(id)))];
 }
 
 /**

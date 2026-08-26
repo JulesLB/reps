@@ -15,6 +15,7 @@ import {
   formatWeight,
   isIntervalLog,
   logTarget,
+  missingRotationDayIds,
   personalRecords,
   planWeek,
   prefillCardio,
@@ -145,6 +146,7 @@ function TrainHome({
   const sessions = finishedSessions(data);
   const streak = weekSessionCount(data);
   const stepCount = activeRotation(data).length;
+  const missingDays = missingRotationDayIds(data);
   const onHyrox = data.activeTrack === "hyrox";
   // The switcher only appears once anything Hyrox exists; a pure gym install never sees it.
   const showPlanSwitch =
@@ -313,6 +315,19 @@ function TrainHome({
             Open the plan
           </Link>
         </section>
+      ) : stepCount > 0 ? (
+        // A cycle with steps but nothing to train means every step points at a
+        // day template this device hasn't got. Say that, rather than "create a
+        // session type" — the session types exist, they just aren't here.
+        <section className="rise rounded-3xl border border-amber/30 bg-surface p-5">
+          <h2 className="display text-3xl font-bold uppercase leading-none tracking-wide text-amber">
+            Cycle incomplete
+          </h2>
+          <p className="mt-2 text-sm text-muted">
+            All {stepCount} steps point at session types missing from this device. Sync, or
+            re-load the cycle from the Plan tab.
+          </p>
+        </section>
       ) : (
         <section className="rise rounded-3xl border border-line-soft bg-surface p-5">
           <h2 className="display text-3xl font-bold uppercase leading-none tracking-wide text-muted">
@@ -320,6 +335,15 @@ function TrainHome({
           </h2>
           <p className="mt-2 text-sm text-faint">Create a session type to start your cycle.</p>
         </section>
+      )}
+
+      {missingDays.length > 0 && (
+        <p className="mt-3 rounded-2xl border border-amber/30 bg-amber/8 px-4 py-3 text-sm text-amber">
+          {missingDays.length} session {missingDays.length === 1 ? "type" : "types"} in this cycle
+          {missingDays.length === 1 ? " is" : " are"} missing from this device
+          {" "}({missingDays.join(", ")}). The steps below skip
+          {missingDays.length === 1 ? " it" : " them"} until it syncs.
+        </p>
       )}
 
       {stepCount > 0 && (
