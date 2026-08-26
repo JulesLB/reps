@@ -21,6 +21,7 @@ function planSignature(d: AppData): string {
   return JSON.stringify({
     exercises: d.exercises,
     days: d.days,
+    deletedDayIds: d.deletedDayIds,
     rotation: d.rotation,
     hyroxRotation: d.hyroxRotation,
     activeTrack: d.activeTrack,

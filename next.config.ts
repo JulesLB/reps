@@ -21,6 +21,9 @@ const csp = [
   "font-src 'self' data:",
   `connect-src 'self' https://*.supabase.co wss://*.supabase.co${isDev ? " ws://localhost:* http://localhost:*" : ""}`,
   "manifest-src 'self'",
+  // The offline shell (public/sw.js). Workers fall back through child-src to
+  // default-src, but naming it keeps the intent readable next to the rest.
+  "worker-src 'self'",
   "object-src 'none'",
   "base-uri 'none'",
   "form-action 'self'",

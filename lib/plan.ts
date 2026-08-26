@@ -335,9 +335,10 @@ export function migrate(raw: unknown): AppData {
   );
 
   return normalize({
-    version: 8,
+    version: 9,
     exercises,
     days: [...planDays, ...kept],
+    deletedDayIds: [],
     rotation: planRotation(),
     hyroxRotation: [],
     activeTrack: "gym",
@@ -381,6 +382,8 @@ const MAX_CLOCK_SKEW_MS = 24 * 60 * 60 * 1000;
 /** Generous for a one-line note, far short of anything that would bloat a push. */
 const MAX_PROFILE_LINE = 400;
 const MAX_PROFILE_CONSTRAINTS = 30;
+/** Matches MAX_DELETED_DAYS in lib/merge.ts; a plan has tens of days, never hundreds. */
+const MAX_DELETED_DAY_IDS = 100;
 
 /**
  * Timestamps decide who wins a merge (lib/merge.ts), so a blob carrying a
@@ -446,10 +449,17 @@ function normalize(d: AppData): AppData {
   // Rebuilt field by field rather than passed through, so anything a hand-edited
   // backup file bolted onto the blob is dropped here instead of being persisted
   // and pushed to every other device.
+  // Bounded like any other synced list: ids are user/script supplied and this
+  // one only ever grows.
+  const deletedDayIds = (Array.isArray(d.deletedDayIds) ? d.deletedDayIds : [])
+    .filter((id): id is string => typeof id === "string" && id.length > 0 && id.length <= 64)
+    .slice(-MAX_DELETED_DAY_IDS);
+
   return {
-    version: 8,
+    version: 9,
     exercises: d.exercises ?? {},
     days: Array.isArray(d.days) ? d.days : [],
+    deletedDayIds,
     rotation: rotation.length ? rotation : planRotation(),
     // Deliberately allowed to stay empty: no Hyrox cycle loaded is a real state.
     hyroxRotation,

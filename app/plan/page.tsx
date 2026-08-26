@@ -146,6 +146,21 @@ function Phases({ data }: { data: AppData }) {
 
   const applyCycle = (phase: ProgramPhase) => {
     if (!phase.rotation?.length) return;
+    // Loading a cycle whose day templates aren't here yields a Train tab with
+    // nothing to start — which is exactly how 2026-08-26 presented. Refuse and
+    // name the gap instead of writing a rotation that can't resolve.
+    const known = new Set(data.days.map((d) => d.id));
+    const missing = [...new Set(phase.rotation.map((s) => s.dayId).filter((id) => !known.has(id)))];
+    if (missing.length) {
+      alert(
+        `Can't load the ${phase.name} cycle: ${missing.length} session ${
+          missing.length === 1 ? "type" : "types"
+        } missing from this device (${missing.join(", ")}).
+
+Sync this device, then try again.`
+      );
+      return;
+    }
     if (!confirm(`Load the ${phase.name} cycle into your Hyrox plan? Your gym plan and its cycle are not touched.`)) return;
     update((d) => {
       d.hyroxRotation = phase.rotation!.map((s) => ({ ...s }));
