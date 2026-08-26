@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { Barlow, Barlow_Condensed } from "next/font/google";
 import "./globals.css";
 import BottomNav from "@/components/BottomNav";
+import ServiceWorker from "@/components/ServiceWorker";
 import SyncProvider from "@/components/SyncProvider";
 
 const barlow = Barlow({
@@ -58,6 +59,7 @@ export default function RootLayout({
           <SyncProvider>{children}</SyncProvider>
         </div>
         <BottomNav />
+        <ServiceWorker />
       </body>
     </html>
   );
